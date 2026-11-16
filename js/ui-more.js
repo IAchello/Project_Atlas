@@ -205,13 +205,18 @@ var A = globalThis.A = globalThis.A || {};
         })), { num: false, cls: 'tight' }),
         al.length ? h('div', h('h3', L('Alerts', 'Alertes')), h('ul', al.map(function (a) { return h('li', (a.contract.ref || a.contract.title) + ' — ' + a.text); }))) : null), true);
     }
+    if (r.evm && (P.statuses || []).length) {
+      var ss = A.evm.sorted(), ms = ss.map(function (s) { return A.evm.metrics(S, s); }), sel = ms.find(function (m) { return m.st.date === A.ui.evmSel; }) || ms[ms.length - 1];
+      page(L('Earned value at ', 'Valeur acquise au ') + A.fmtDate(sel.day) + ' (' + cur + ')', h('div', A.evmKpis(S, sel), A.evmChartS(S, ms, sel)), true);
+      page(L('Earned value — summary by status date', 'Valeur acquise — synthèse par date d’état') + ' (' + cur + ')', A.evmSummaryCard(ms), true);
+    }
     if (!out.children.length) out.appendChild(h('p.muted.pad', L('Tick at least one section.', 'Cocher au moins une section.')));
     return out;
   };
   A.views.reports = function (root) {
     var r = A.ui.report;
     var opts = [['summary', L('Project summary', 'Synthèse du projet')], ['wbs', L('WBS diagram', 'Diagramme WBS')], ['dictionary', L('WBS dictionary', 'Dictionnaire du WBS')], ['gantt', L('Gantt chart', 'Diagramme de Gantt')],
-      ['budget', L('Budget', 'Budget')], ['cashflow', L('Cash-flow plan', 'Plan de trésorerie')], ['procurement', L('Procurement plan', 'Plan de passation')], ['contracts', L('Contract status', 'Suivi des contrats')]];
+      ['budget', L('Budget', 'Budget')], ['cashflow', L('Cash-flow plan', 'Plan de trésorerie')], ['procurement', L('Procurement plan', 'Plan de passation')], ['contracts', L('Contract status', 'Suivi des contrats')], ['evm', L('Earned value', 'Valeur acquise')]];
     root.appendChild(h('div.toolbar.noprint',
       h('div.tg', A.btn('print', L('Print or save as PDF', 'Imprimer ou enregistrer en PDF'), function () { window.print(); }, { primary: true })),
       h('div.tg', opts.map(function (o) { return h('label.chk', h('input', { type: 'checkbox', checked: r[o[0]], onchange: function (e) { r[o[0]] = e.target.checked; A.refresh(); } }), o[1]); })),

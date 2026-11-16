@@ -4,7 +4,7 @@ var A = globalThis.A = globalThis.A || {};
   var h = A.h, L = A.L;
   function tabs() {
     return [['dashboard', L('Dashboard', 'Tableau de bord')], ['wbs', 'WBS'], ['gantt', 'Gantt'], ['resources', L('Resources', 'Ressources')],
-      ['procurement', L('Procurement', 'Passation')], ['contracts', L('Contracts', 'Contrats')], ['finance', L('Budget & cash flow', 'Budget et trésorerie')],
+      ['procurement', L('Procurement', 'Passation')], ['contracts', L('Contracts', 'Contrats')], ['finance', L('Budget & cash flow', 'Budget et trésorerie')], ['evm', L('Earned value', 'Valeur acquise')],
       ['reports', L('Reports', 'Rapports')], ['project', L('Project', 'Projet')]];
   }
   function prefs(save) {
@@ -26,19 +26,20 @@ var A = globalThis.A = globalThis.A || {};
   }
   function replaceProject(p) {
     var before = JSON.stringify(A.P), stack = A.undoStack.slice();
-    A.ui.sel = new Set(); A.ui.zoom = null; A.ui.contractId = null; A.ui.showBase = false;
+    A.ui.sel = new Set(); A.ui.zoom = null; A.ui.contractId = null; A.ui.showBase = false; A.ui.evmSel = null;
     A.setProject(p);
     A.undoStack = stack.concat([before]);
     A.refresh();
   }
   A.fileNew = guard(function () { replaceProject(A.newProject()); A.go('project'); });
   A.loadExample = guard(function () { replaceProject(A.buildAzuriya()); A.go('dashboard'); A.toast(L('Example loaded: Azuriya Health Project.', 'Exemple chargé : Projet Santé Azuriya.'), 'ok'); });
+  A.loadABCDE = guard(function () { replaceProject(A.buildABCDE()); A.ui.evmTab = 'dash'; A.go('evm'); A.toast(L('Example loaded: Project ABCDE.', 'Exemple chargé : Projet ABCDE.'), 'ok'); });
   A.fileSave = function () { A.download(A.fileName('.atlas'), JSON.stringify(A.P, null, 1), 'application/json'); };
   function openText(text, name) {
     try {
       var p;
       if (/^\s*</.test(text)) p = A.importMSPXML(text);
-      else { p = JSON.parse(text); if (!p || !Array.isArray(p.tasks)) throw L('This file is not a Project Atlas file.', 'Ce fichier n’est pas un fichier Project Atlas.'); }
+      else { p = JSON.parse(text); if (A.evm.isTrackerFile(p)) p = A.evm.fromTracker(p); if (!p || !Array.isArray(p.tasks)) throw L('This file is not a Project Atlas file.', 'Ce fichier n’est pas un fichier Project Atlas.'); }
       replaceProject(p); A.go(p.tasks.length ? 'gantt' : 'dashboard');
       A.toast(L('Opened ', 'Ouvert : ') + name, 'ok');
     } catch (e) { A.toast(String(e.message || e), 'bad'); }
@@ -78,17 +79,18 @@ var A = globalThis.A = globalThis.A || {};
   function renderShell() {
     var head = document.getElementById('head'); head.textContent = '';
     head.appendChild(h('div.brandbox',
-      h('span.logo', { html: '<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 16h26M16 3c-5 4-5 22 0 26M16 3c5 4 5 22 0 26M5.5 9.5h21M5.5 22.5h21" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>' }),
-      h('div', h('strong', 'Project Atlas'), h('span.proj', { title: L('Project settings', 'Paramètres du projet'), onclick: function () { A.go('project'); } }, A.P.name))));
+      h('span.logo', h('img', { src: 'assets/logo.png', alt: 'SETYM' })),
+      h('div.bt', h('strong', 'Project Atlas'), h('span.proj', { title: L('Project settings', 'Paramètres du projet'), onclick: function () { A.go('project'); } }, A.P.name))));
     head.appendChild(h('div.headtools',
       menu(L('File', 'Fichier'), 'file', [
-        [L('New project', 'Nouveau projet'), A.fileNew], [L('Open…', 'Ouvrir…'), A.fileOpen, L('.atlas file or MS Project XML', 'fichier .atlas ou XML MS Project')], [L('Save to a file', 'Enregistrer dans un fichier'), A.fileSave, '.atlas'], null,
+        [L('New project', 'Nouveau projet'), A.fileNew], [L('Open…', 'Ouvrir…'), A.fileOpen, L('.atlas file, MS Project XML or EVM Tracker .json', 'fichier .atlas, XML MS Project ou .json EVM Tracker')], [L('Save to a file', 'Enregistrer dans un fichier'), A.fileSave, '.atlas'], null,
         [L('Import MS Project XML…', 'Importer un XML MS Project…'), A.importXML, L('from MS Project or ProjectLibre', 'depuis MS Project ou ProjectLibre')],
         [L('Import tasks from Excel / CSV…', 'Importer des tâches Excel / CSV…'), A.importSheet, L('added to the current project', 'ajoutées au projet actuel')],
         [L('Download the Excel import template', 'Télécharger le modèle d’import Excel'), A.sheetTemplate], null,
         [L('Export MS Project XML', 'Exporter en XML MS Project'), A.exportXML], [L('Export to Excel', 'Exporter vers Excel'), A.exportXLSX, L('tasks, resources, contracts, budget, cash flow', 'tâches, ressources, contrats, budget, trésorerie')],
         [L('Print / PDF reports', 'Rapports à imprimer / PDF'), function () { A.go('reports'); }], null,
-        [L('Load the example: Azuriya Health Project', 'Charger l’exemple : Projet Santé Azuriya'), A.loadExample]]),
+        [L('Load the example: Azuriya Health Project', 'Charger l’exemple : Projet Santé Azuriya'), A.loadExample, L('planning, procurement, contracts', 'planification, passation, contrats')],
+        [L('Load the example: Project ABCDE', 'Charger l’exemple : Projet ABCDE'), A.loadABCDE, L('earned value monitoring', 'suivi par la valeur acquise')]]),
       A.btn('save', L('Save', 'Enregistrer'), A.fileSave, { title: L('Save the project to a file. Changes are also kept automatically in this browser.', 'Enregistrer le projet dans un fichier. Les modifications sont aussi conservées automatiquement dans ce navigateur.') }),
       A.btn('undo', L('Undo (Ctrl+Z)', 'Annuler (Ctrl+Z)'), A.undo, { iconOnly: true, disabled: !A.undoStack.length }),
       A.btn('redo', L('Redo (Ctrl+Y)', 'Rétablir (Ctrl+Y)'), A.redo, { iconOnly: true, disabled: !A.redoStack.length }),

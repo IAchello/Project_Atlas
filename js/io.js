@@ -369,5 +369,6 @@ A.exportXLSX = function () {
   sheet(L('Budget', 'Budget'), A.tableBudget(), [50]);
   sheet(L('Cash flow by category', 'Trésorerie par catégorie'), A.tableCashflowRows('month', 'category'), [30]);
   sheet(L('Cash flow by component', 'Trésorerie par composante'), A.tableCashflowRows('month', 'component'), [50]);
+  if ((A.P.statuses || []).length) sheet(L('Earned value', 'Valeur acquise'), A.evm.table(), [14]);
   XLSX.writeFile(wb, A.fileName('.xlsx'));
 };

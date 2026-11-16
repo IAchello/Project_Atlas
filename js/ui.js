@@ -2,7 +2,7 @@
 var A = globalThis.A = globalThis.A || {};
 A.ui = { tab: 'dashboard', sel: new Set(), anchor: null, zoom: null, showCrit: true, showBase: false, gridW: 620,
   contractId: null, contractTab: 'general', wbsDir: 'h', wbsDepth: 0, wbsCost: true, cfStep: 'quarter', cfBy: 'category', resId: null,
-  report: { summary: true, wbs: true, gantt: true, budget: true, cashflow: true, procurement: true, contracts: true, dictionary: false } };
+  report: { summary: true, wbs: true, gantt: true, budget: true, cashflow: true, procurement: true, contracts: true, dictionary: false, evm: true } };
 A.views = {};
 
 /* h('div.card#id', {onclick: fn, title: 'x'}, child, 'text', [more]) */

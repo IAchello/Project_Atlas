@@ -124,7 +124,7 @@ A.newProject = function (name) {
     ],
     thresholds: A.defaultThresholds(),
     tasks: [], resources: [], assignments: [], contracts: [],
-    baseline: null, nextId: 100
+    baseline: null, statuses: [], eacMethod: 'cpi', shared: null, nextId: 100
   };
 };
 A.newTask = function (name, level, extra) {
@@ -166,7 +166,7 @@ A.normalize = function (p) {
     for (var k in cDef) if (c[k] == null && k !== 'id') c[k] = A.clone(cDef[k]); seen(c);
     ['milestones', 'payments', 'guarantees', 'changes'].forEach(function (g) { c[g].forEach(seen); });
   });
-  p.categories.forEach(seen);
+  p.categories.forEach(seen); (p.statuses || []).forEach(seen);
   if (!(p.nextId > maxId)) p.nextId = maxId + 1;
   return p;
 };

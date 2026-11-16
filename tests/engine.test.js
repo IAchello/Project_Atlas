@@ -1,6 +1,6 @@
 /* Engine checks, run with: node tests/engine.test.js */
 const path = require('path');
-['core', 'schedule', 'procure', 'example', 'io'].forEach(f => require(path.join('..', 'js', f + '.js')));
+['core', 'schedule', 'procure', 'example', 'io', 'evm'].forEach(f => require(path.join('..', 'js', f + '.js')));
 const A = globalThis.A;
 let fails = 0;
 function ok(cond, msg) { if (!cond) { fails++; console.log('FAIL  ' + msg); } else console.log('ok    ' + msg); }
@@ -84,6 +84,20 @@ eq(A.overallocations(S).length, 1, 'over-allocation found');
   eq(S2.PF, 580, lang + ': XML round trip keeps the schedule');
   eq(Math.round(S2.total), 27885450, lang + ': XML round trip keeps the cost');
 });
+
+/* ---- earned value: the EVM Tracker example ---- */
+A.lang = 'en'; A.P = A.normalize(A.buildABCDE()); S = A.recalc();
+eq(S.PF, 55, 'ABCDE lasts 55 working days'); eq(Math.round(S.total), 1000000, 'ABCDE BAC');
+const ss = A.evm.sorted(), m1 = A.evm.metrics(S, ss[0]), m3 = A.evm.metrics(S, ss[2]);
+eq(Math.round(m1.tot.pv), 300000, 'PV at 30 June'); eq(Math.round(m1.tot.ev), 250000, 'EV at 30 June'); eq(m1.tot.ac, 265000, 'AC at 30 June');
+eq(m1.tot.spi.toFixed(3), '0.833', 'SPI'); eq(m1.tot.cpi.toFixed(3), '0.943', 'CPI');
+eq(Math.round(m1.tot.eac), 1060000, 'EAC = AC + (BAC-EV)/CPI');
+eq(Math.round(m3.tot.ev), 840000, 'EV at 31 July'); eq(m3.tot.ac, 920000, 'AC at 31 July');
+const fc = A.evm.forecast(S, m3); ok(fc.fin > fc.planned, 'forecast finish later than planned (' + A.toISO(fc.fin) + ' vs ' + A.toISO(fc.planned) + ')');
+eq(A.P.tasks[2].pct, 85, 'latest status drives task progress'); eq(A.P.statusDate, '2026-07-31', 'status date follows');
+A.lang = 'en'; A.P = A.buildAzuriya(); S = A.recalc();
+const mz = A.evm.metrics(S, { date: A.toISO(S.finish), pct: {}, ac: {} });
+eq(Math.round(mz.tot.pv), 27885450, 'Azuriya PV at the finish equals the budget');
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
 process.exit(fails ? 1 : 0);

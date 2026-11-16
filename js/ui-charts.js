@@ -2,7 +2,7 @@
 var A = globalThis.A = globalThis.A || {};
 (function () {
   var h = A.h;
-  A.SERIES = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
+  A.SERIES = ['#0054A5', '#F26B43', '#00ABD6', '#7D8A00', '#6250d6', '#e87ba4', '#9A9B9C', '#C0392B'];
   function nice(max) {
     if (!(max > 0)) return { max: 1, step: 1 };
     var raw = max / 4, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p, step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p;
