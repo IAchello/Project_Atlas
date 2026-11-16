@@ -253,6 +253,7 @@ var A = globalThis.A = globalThis.A || {};
     root.appendChild(h('div.card', h('div.card-head', h('h2', L('Expense categories', 'Catégories de dépenses')), h('span.muted', L('as in the financing agreement', 'comme dans l’accord de financement'))),
       A.listEditor({ id: 'cat', rows: function () { return A.P.categories; }, cols: [{ k: 'name', label: L('Category', 'Catégorie') }],
         add: function () { return { id: A.uid(), name: L('New category', 'Nouvelle catégorie') }; }, del: function (c) { A.P.tasks.forEach(function (t) { if (t.cat === c.id) t.cat = 0; }); }, addLabel: L('Add category', 'Ajouter une catégorie') })));
+    root.appendChild(A.cloud.settingsCard());
     var warn = P.calendar.daysPerWeek !== P.calendar.workDays.length;
     if (warn) root.insertBefore(h('div.banner.warn', A.icon('warn'), L('“Days per week” differs from the number of working days ticked: durations typed in weeks will not match calendar weeks.', '« Jours par semaine » diffère du nombre de jours ouvrés cochés : les durées saisies en semaines ne correspondront pas aux semaines du calendrier.')), root.children[1]);
   };

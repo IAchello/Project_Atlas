@@ -19,6 +19,8 @@ Projects are kept in the browser and saved to `.atlas` files.
 - **Procurement**: method and review suggested from editable thresholds; procurement steps generated as
   linked tasks ending with the contract signature.
 - **Contracts**: register, milestones, payment schedule, guarantees, amendments, claims and penalties, alerts.
+- **Online sharing** (optional): share a project by link, save online with a conflict warning.
+  Needs a free Supabase project: see [`supabase/README.md`](supabase/README.md).
 - **Files**: MS Project XML import and export (MS Project, ProjectLibre), Excel and CSV, print / PDF reports.
 - **Example**: Azuriya Health Project (File › Load the example).
 
@@ -32,6 +34,8 @@ Projects are kept in the browser and saved to `.atlas` files.
 | `js/io.js` | MS Project XML, Excel / CSV, report tables |
 | `js/example.js` | the Azuriya example |
 | `js/evm.js` | earned value calculations, EVM Tracker import, ABCDE example |
+| `js/cloud.js`, `js/config.js` | online shared projects and their settings |
+| `supabase/setup.sql` | database script for online sharing |
 | `js/ui*.js`, `js/app.js` | screens |
 | `css/atlas.css` | styles; brand colours are the variables at the top |
 | `vendor/xlsx.full.min.js` | SheetJS 0.18.5 (Apache-2.0), Excel read/write |

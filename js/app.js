@@ -91,11 +91,13 @@ var A = globalThis.A = globalThis.A || {};
         [L('Print / PDF reports', 'Rapports à imprimer / PDF'), function () { A.go('reports'); }], null,
         [L('Load the example: Azuriya Health Project', 'Charger l’exemple : Projet Santé Azuriya'), A.loadExample, L('planning, procurement, contracts', 'planification, passation, contrats')],
         [L('Load the example: Project ABCDE', 'Charger l’exemple : Projet ABCDE'), A.loadABCDE, L('earned value monitoring', 'suivi par la valeur acquise')]]),
+      (function () { var m = menu(A.cloud.statusText(), 'link', A.cloud.menuItems()); m.classList.add('share'); if (A.P.shared && A.P.shared.dirty && A.cloud.canEdit()) m.classList.add('dirty'); return m; })(),
+      A.P.shared && A.cloud.canEdit() ? A.btn('up2', L('Save online', 'Enregistrer en ligne'), function () { A.cloud.save(); }, { primary: A.P.shared.dirty, title: L('Send your changes to the shared online project (Ctrl+S)', 'Envoyer vos modifications au projet partagé en ligne (Ctrl+S)') }) : null,
       A.btn('save', L('Save', 'Enregistrer'), A.fileSave, { title: L('Save the project to a file. Changes are also kept automatically in this browser.', 'Enregistrer le projet dans un fichier. Les modifications sont aussi conservées automatiquement dans ce navigateur.') }),
       A.btn('undo', L('Undo (Ctrl+Z)', 'Annuler (Ctrl+Z)'), A.undo, { iconOnly: true, disabled: !A.undoStack.length }),
       A.btn('redo', L('Redo (Ctrl+Y)', 'Rétablir (Ctrl+Y)'), A.redo, { iconOnly: true, disabled: !A.redoStack.length }),
       h('div.seg.lang', h('button' + (A.lang === 'fr' ? '.on' : ''), { type: 'button', onclick: function () { setLang('fr'); } }, 'FR'), h('button' + (A.lang === 'en' ? '.on' : ''), { type: 'button', onclick: function () { setLang('en'); } }, 'EN'))));
-    head.querySelectorAll('.headtools > .btn').forEach(function (b) { b.classList.add('onhead'); });
+    head.querySelectorAll('.headtools > .btn').forEach(function (b) { if (!b.classList.contains('primary')) b.classList.add('onhead'); });
     var nav = document.getElementById('tabs'); nav.textContent = '';
     tabs().forEach(function (t) { nav.appendChild(h('button' + (A.ui.tab === t[0] ? '.on' : ''), { type: 'button', role: 'tab', 'aria-selected': A.ui.tab === t[0] ? 'true' : 'false', onclick: function () { A.go(t[0]); } }, t[1])); });
     document.documentElement.lang = A.lang;
@@ -108,12 +110,14 @@ var A = globalThis.A = globalThis.A || {};
     var focus = A.captureFocus(), main = document.getElementById('main'), y = window.scrollY;
     renderShell();
     main.textContent = ''; main.className = 'view-' + A.ui.tab;
+    var cb = A.cloud.banner(); if (cb) main.appendChild(cb);
     try { (A.views[A.ui.tab] || A.views.dashboard)(main); }
     catch (e) { console.error(e); main.appendChild(h('div.banner.bad', L('This screen could not be displayed: ', 'Cet écran n’a pas pu être affiché : ') + (e.message || e))); }
     A.restoreFocus(focus);
     window.scrollTo(0, y);
   };
   A.onChange = function () { A.refresh(); };
+  A.renderShellOnly = renderShell;
 
   document.addEventListener('keydown', function (e) {
     var tag = (e.target.tagName || '').toLowerCase(), typing = tag === 'input' || tag === 'textarea' || tag === 'select';
@@ -122,7 +126,7 @@ var A = globalThis.A = globalThis.A || {};
       if (k === 'z' && !e.shiftKey) { A.undo(); e.preventDefault(); }
       else if (k === 'y' || (k === 'z' && e.shiftKey)) { A.redo(); e.preventDefault(); }
     }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { A.fileSave(); e.preventDefault(); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { if (A.P.shared && A.cloud.canEdit()) A.cloud.save(); else A.fileSave(); e.preventDefault(); }
   });
 
   A.start = function () {
@@ -134,6 +138,7 @@ var A = globalThis.A = globalThis.A || {};
     else A.P = A.newProject();
     A.recalc();
     A.refresh();
+    A.cloud.start();
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', A.start); else A.start();
 })();
