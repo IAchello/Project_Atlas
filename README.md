@@ -3,7 +3,9 @@
 Project planning and contract management in the browser: WBS, Gantt chart, resources,
 budget and cash flow, procurement plan, contracts. French / English.
 
-Open `index.html`, or publish the repository with GitHub Pages (no build step, no server).
+Open `index.html`, or publish the repository with GitHub Pages (no build step, no server):
+Settings > Pages > Source *Deploy from a branch* > choose the branch and `/ (root)` > Save.
+The app is then at `https://<user>.github.io/Project_Atlas/`.
 Projects are kept in the browser and saved to `.atlas` files.
 
 ## What it does

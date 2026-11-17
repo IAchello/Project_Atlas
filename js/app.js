@@ -61,6 +61,7 @@ var A = globalThis.A = globalThis.A || {};
   };
   A.exportXML = function () { A.download(A.fileName('.xml'), A.exportMSPXML(), 'application/xml'); A.toast(L('MS Project XML saved. In MS Project or ProjectLibre use File › Open and choose the XML format.', 'XML MS Project enregistré. Dans MS Project ou ProjectLibre : Fichier › Ouvrir, format XML.'), 'ok'); };
   A.sheetTemplate = function () {
+    if (A.blocked()) return;
     var rows = [[L('WBS', 'WBS'), L('Name', 'Nom'), L('Duration', 'Durée'), L('Predecessors', 'Prédécesseurs'), L('Cost', 'Coût'), L('Category', 'Catégorie'), L('Resources', 'Ressources'), L('Notes', 'Notes')],
       ['1', L('Component A', 'Composante A'), '', '', '', '', '', ''], ['1.1', L('Design', 'Conception'), '3mo', '', 300000, '', '', ''], ['1.2', L('Works', 'Travaux'), '12mo', '2', 5000000, '', '', L('row numbers refer to the lines of this sheet', 'les numéros renvoient aux lignes de cette feuille')]];
     var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), L('Tasks', 'Tâches')); XLSX.writeFile(wb, L('Project Atlas - task import template.xlsx', 'Project Atlas - modèle import tâches.xlsx'));

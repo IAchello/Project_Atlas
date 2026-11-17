@@ -218,7 +218,7 @@ var A = globalThis.A = globalThis.A || {};
     var opts = [['summary', L('Project summary', 'Synthèse du projet')], ['wbs', L('WBS diagram', 'Diagramme WBS')], ['dictionary', L('WBS dictionary', 'Dictionnaire du WBS')], ['gantt', L('Gantt chart', 'Diagramme de Gantt')],
       ['budget', L('Budget', 'Budget')], ['cashflow', L('Cash-flow plan', 'Plan de trésorerie')], ['procurement', L('Procurement plan', 'Plan de passation')], ['contracts', L('Contract status', 'Suivi des contrats')], ['evm', L('Earned value', 'Valeur acquise')]];
     root.appendChild(h('div.toolbar.noprint',
-      h('div.tg', A.btn('print', L('Print or save as PDF', 'Imprimer ou enregistrer en PDF'), function () { window.print(); }, { primary: true })),
+      h('div.tg', A.btn('print', L('Print or save as PDF', 'Imprimer ou enregistrer en PDF'), function () { if (!A.blocked()) window.print(); }, { primary: true })),
       h('div.tg', opts.map(function (o) { return h('label.chk', h('input', { type: 'checkbox', checked: r[o[0]], onchange: function (e) { r[o[0]] = e.target.checked; A.refresh(); } }), o[1]); })),
       h('div.tg', A.btn('down2', 'Excel', function () { A.exportXLSX(); }), A.btn('down2', 'CSV', function () { A.download(A.fileName('.csv'), A.toCSV(A.tableTasks()), 'text/csv'); }, { title: L('Task list as CSV', 'Liste des tâches en CSV') }))));
     root.appendChild(h('p.muted.pad.noprint', L('Preview of the printed report. The Gantt chart follows what is folded or unfolded in the Gantt tab. In the print dialog choose “Save as PDF” to get a PDF file.',

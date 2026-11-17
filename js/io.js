@@ -338,7 +338,14 @@ A.parseCSV = function (text) {
 };
 
 /* ---------- browser-only helpers ---------- */
+/* in the claude.ai preview, the frame blocks downloads and printing: say so instead of failing silently */
+A.blocked = function () {
+  if (!A.previewMode) return false;
+  A.toast(A.L('This preview cannot save files or print. Use the published version on GitHub Pages for that.', 'Cet aperçu ne peut pas enregistrer de fichiers ni imprimer. Utiliser la version publiée sur GitHub Pages pour cela.'), 'bad');
+  return true;
+};
 A.download = function (name, data, mime) {
+  if (A.blocked()) return;
   var blob = data instanceof Blob ? data : new Blob([data], { type: mime || 'application/octet-stream' });
   var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
@@ -356,6 +363,7 @@ A.pickFile = function (accept, cb, binary) {
   inp.click();
 };
 A.exportXLSX = function () {
+  if (A.blocked()) return;
   var L = A.L, wb = XLSX.utils.book_new();
   function sheet(name, rows, widths) {
     var ws = XLSX.utils.aoa_to_sheet(rows);
