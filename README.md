@@ -16,6 +16,10 @@ Projects are kept in the browser and saved to `.atlas` files.
 ## What it does
 
 - **WBS and Gantt are one structure**: a box added in the WBS diagram is a task in the Gantt, and the reverse.
+- **Project definition, stakeholders, risks** (version 2): project definition with results chain, logical framework
+  with indicators and assumptions linked to WBS components, KPIs; stakeholder analysis grid, power / interest matrix,
+  engagement sheets and communication plan; risk register with P × I matrix, response control plan, EMV reserves
+  and issue log. All exported to Excel and the printed report.
 - **Version 2 additions**: currency list and duration unit on the Project tab, budget lines, movable and foldable WBS boxes with zoom,
   resource drop-down and task filter in the Gantt, resources on summary tasks, up to ten baselines, accounting categories
   and material capacities for resources, multi-selection of contracts, simultaneous editing of shared projects.
@@ -44,6 +48,7 @@ Projects are kept in the browser and saved to `.atlas` files.
 | `js/io.js` | MS Project XML, Excel / CSV, report tables |
 | `js/example.js` | the Azuriya example |
 | `js/evm.js` | earned value calculations, EVM Tracker import, ABCDE example |
+| `js/pm.js`, `js/ui-pm.js` | project definition, logical framework, stakeholders, risks and issues |
 | `js/cloud.js`, `js/config.js` | online shared projects and their settings |
 | `supabase/setup.sql` | database script for online sharing |
 | `js/ui*.js`, `js/app.js` | screens |

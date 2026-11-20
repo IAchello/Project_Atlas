@@ -5,6 +5,7 @@ var A = globalThis.A = globalThis.A || {};
   function tabs() {
     return [['dashboard', L('Dashboard', 'Tableau de bord')], ['wbs', 'WBS'], ['gantt', 'Gantt'], ['resources', L('Resources', 'Ressources')],
       ['procurement', L('Procurement', 'Passation')], ['contracts', L('Contracts', 'Contrats')], ['finance', L('Budget & cash flow', 'Budget et trésorerie')], ['evm', L('Earned value', 'Valeur acquise')],
+      ['definition', L('Definition & results', 'Définition et résultats')], ['stakeholders', L('Stakeholders', 'Parties prenantes')], ['risks', L('Risks & issues', 'Risques et problèmes')],
       ['reports', L('Reports', 'Rapports')], ['project', L('Project', 'Projet')]];
   }
   function prefs(save) {
@@ -81,7 +82,7 @@ var A = globalThis.A = globalThis.A || {};
     var head = document.getElementById('head'); head.textContent = '';
     head.appendChild(h('div.brandbox',
       h('span.logo', h('img', { src: 'assets/logo.png', alt: 'SETYM' })),
-      h('div.bt', h('strong', 'Project Atlas', h('small.ver', ' v' + A.APP_VERSION)), h('span.proj', { title: L('Project settings', 'Paramètres du projet'), onclick: function () { A.go('project'); } }, A.P.name))));
+      h('div.bt', h('strong', 'Project Atlas', h('small.ver', { title: L('Version ', 'Version ') + A.APP_VERSION }, 'v' + A.APP_VERSION)), h('span.proj', { title: L('Project settings', 'Paramètres du projet'), onclick: function () { A.go('project'); } }, A.P.name))));
     head.appendChild(h('div.headtools',
       menu(L('File', 'Fichier'), 'file', [
         [L('New project', 'Nouveau projet'), A.fileNew], [L('Open…', 'Ouvrir…'), A.fileOpen, L('.atlas file, MS Project XML or EVM Tracker .json', 'fichier .atlas, XML MS Project ou .json EVM Tracker')], [L('Save to a file', 'Enregistrer dans un fichier'), A.fileSave, '.atlas'], null,

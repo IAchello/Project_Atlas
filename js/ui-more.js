@@ -213,6 +213,31 @@ var A = globalThis.A = globalThis.A || {};
         })), { num: false, cls: 'tight' }),
         al.length ? h('div', h('h3', L('Alerts', 'Alertes')), h('ul', al.map(function (a) { return h('li', (a.contract.ref || a.contract.title) + ' — ' + a.text); }))) : null), true);
     }
+    if (r.definition && ((P.results || []).length || (P.definition && (P.definition.goal || P.definition.problem)))) {
+      var d = A.pm.definition(), defRows = [[L('Problem or need', 'Problème ou besoin'), d.problem], [L('Goal (impact)', 'Finalité (impact)'), d.goal], [L('Beneficiaries', 'Bénéficiaires'), d.beneficiaries], [L('Scope', 'Périmètre'), d.scope], [L('Out of scope', 'Hors périmètre'), d.exclusions], [L('Success criteria', 'Critères de succès'), d.success], [L('Constraints', 'Contraintes'), d.constraints]].filter(function (x) { return x[1]; });
+      page(L('Project definition', 'Définition du projet'), h('div', defRows.length ? h('table.data.deftab', h('tbody', defRows.map(function (x) { return h('tr', h('th', x[0]), h('td', x[1])); }))) : null, h('h3', L('Results chain', 'Chaîne de résultats')), A.resultsChain()));
+      if ((P.results || []).length) {
+        var lf = [[L('Level', 'Niveau'), L('Narrative summary', 'Résumé narratif'), L('Indicators', 'Indicateurs'), L('Means of verification', 'Moyens de vérification'), L('Critical assumptions', 'Hypothèses critiques')]];
+        A.pm.sortedResults().forEach(function (x) { lf.push([A.pm.levelName(x.level), x.text, x.indicators.map(function (i) { return '• ' + i.text + (i.target ? ' (' + L('target ', 'cible ') + i.target + (i.unit ? ' ' + i.unit : '') + ')' : ''); }).join('\n'), x.indicators.map(function (i) { return i.source ? '• ' + i.source : ''; }).filter(Boolean).join('\n'), x.assumptions]); });
+        page(L('Logical framework', 'Cadre logique'), A.simpleTable(lf, { num: false, cls: 'wrap' }), true);
+        page(L('Results framework and indicators', 'Cadre de résultats et indicateurs'), A.simpleTable(A.pm.tables().results, { num: false, cls: 'tight' }), true);
+      }
+      if ((P.kpis || []).length) page(L('Key performance indicators', 'Indicateurs clés de performance'), A.simpleTable(A.pm.tables().kpis, { num: false, cls: 'tight' }), true);
+    }
+    if (r.stakeholders && (P.stakeholders || []).length) {
+      page(L('Stakeholder analysis', 'Analyse des parties prenantes'), h('div', h('div.fit', { html: A.stakeholderMatrixSVG() }), h('ol.sh-legend', P.stakeholders.map(function (s) { return h('li', s.name); }))), true);
+      page(L('Stakeholder analysis grid', 'Grille d’analyse des parties prenantes'), A.simpleTable(A.pm.tables().stakeholders.map(function (row) { return row.slice(0, 13); }), { num: false, cls: 'tight wrap' }), true);
+      page(L('Engagement and advocacy sheets', 'Fiches d’engagement et de plaidoyer'), h('div.adv', P.stakeholders.map(function (s, i) { return A.advocacyCard(s, i, false); })), true);
+      page(L('Communication plan', 'Plan de communication'), A.simpleTable([[L('Who?', 'Qui ?'), L('Approach', 'Approche'), L('What? Information needs', 'Quoi ? Besoins d’information'), L('How? Means', 'Comment ? Moyens'), L('When? Frequency', 'Quand ? Fréquence'), L('Person in charge', 'Responsable')]]
+        .concat(P.stakeholders.map(function (s) { return [s.name, (A.pm.strategies().find(function (x) { return x.id === A.pm.strategyOf(s); }) || {}).name, s.info, s.means, s.freq, s.owner]; })), { num: false, cls: 'wrap' }), true);
+    }
+    if (r.risks && (P.risks || []).length) {
+      var rsum = A.pm.riskSummary();
+      page(L('Risk register', 'Registre des risques'), h('div', h('div.kpis', A.kpi(L('Active risks', 'Risques actifs'), String(rsum.open)), A.kpi(L('Very high / high', 'Très élevé / élevé'), String(rsum.byBand.vh + rsum.byBand.h)), A.kpi(L('Contingency reserve', 'Réserve pour aléas'), A.money(rsum.reserve), cur), A.kpi(L('Open issues', 'Problèmes ouverts'), String(rsum.issuesOpen))),
+        h('div.rm-wrap', h('div', { html: A.riskMatrixSVG() }), A.simpleTable(A.pm.tables().risks.map(function (row) { return [row[0], row[3], row[4], row[5], row[6], row[8], row[10], row[18]]; }), { num: false, cls: 'tight wrap' }))), true);
+      if (A.pm.tables().actions.length > 1) page(L('Risk response control plan', 'Plan de contrôle des réponses aux risques'), A.simpleTable(A.pm.tables().actions, { num: false, cls: 'tight wrap' }), true);
+      if ((P.issues || []).length) page(L('Issue log', 'Journal des problèmes'), A.simpleTable(A.pm.tables().issues, { num: false, cls: 'tight wrap' }), true);
+    }
     if (r.evm && (P.statuses || []).length) {
       var ss = A.evm.sorted(), ms = ss.map(function (s) { return A.evm.metrics(S, s); }), sel = ms.find(function (m) { return m.st.date === A.ui.evmSel; }) || ms[ms.length - 1];
       page(L('Earned value at ', 'Valeur acquise au ') + A.fmtDate(sel.day) + ' (' + cur + ')', h('div', A.evmKpis(S, sel), A.evmChartS(S, ms, sel)), true);
@@ -224,7 +249,7 @@ var A = globalThis.A = globalThis.A || {};
   A.views.reports = function (root) {
     var r = A.ui.report;
     var opts = [['summary', L('Project summary', 'Synthèse du projet')], ['wbs', L('WBS diagram', 'Diagramme WBS')], ['dictionary', L('WBS dictionary', 'Dictionnaire du WBS')], ['gantt', L('Gantt chart', 'Diagramme de Gantt')],
-      ['budget', L('Budget', 'Budget')], ['cashflow', L('Cash-flow plan', 'Plan de trésorerie')], ['procurement', L('Procurement plan', 'Plan de passation')], ['contracts', L('Contract status', 'Suivi des contrats')], ['evm', L('Earned value', 'Valeur acquise')]];
+      ['budget', L('Budget', 'Budget')], ['cashflow', L('Cash-flow plan', 'Plan de trésorerie')], ['procurement', L('Procurement plan', 'Plan de passation')], ['contracts', L('Contract status', 'Suivi des contrats')], ['evm', L('Earned value', 'Valeur acquise')], ['definition', L('Definition & logframe', 'Définition et cadre logique')], ['stakeholders', L('Stakeholders', 'Parties prenantes')], ['risks', L('Risks & issues', 'Risques et problèmes')]];
     root.appendChild(h('div.toolbar.noprint',
       h('div.tg', A.btn('print', L('Print or save as PDF', 'Imprimer ou enregistrer en PDF'), function () { if (!A.blocked()) window.print(); }, { primary: true })),
       h('div.tg', opts.map(function (o) { return h('label.chk', h('input', { type: 'checkbox', checked: r[o[0]], onchange: function (e) { r[o[0]] = e.target.checked; A.refresh(); } }), o[1]); })),

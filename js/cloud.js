@@ -96,7 +96,7 @@ var A = globalThis.A = globalThis.A || {};
     return order.map(function (k) { return res.get(k); });
   }
   cloud.merge = function (base, local, remote) {
-    var out = A.clone(remote), lists = { tasks: null, resources: null, contracts: null, categories: null, statuses: null, baselines: null, assignments: function (a) { return a.task + '/' + a.res; } };
+    var out = A.clone(remote), lists = { tasks: null, resources: null, contracts: null, categories: null, statuses: null, baselines: null, stakeholders: null, results: null, kpis: null, risks: null, issues: null, assignments: function (a) { return a.task + '/' + a.res; } };
     Object.keys(local).forEach(function (k) {
       if (k === 'shared' || k === 'nextId') return;
       if (k in lists) out[k] = mergeList(base[k], local[k], remote[k], lists[k] || undefined);

@@ -12,6 +12,9 @@ Project Atlas stores shared projects in a Supabase project that you own. The fre
 5. Switch it on for everybody: put the same two values in [`../js/config.js`](../js/config.js) and publish.
    Both values are public by design; the edit code of each project is what protects it.
 
+The published copy of Project Atlas already carries the values of the SETYM Supabase project
+(`qmqubhhmytznawovuagb.supabase.co`); only step 2 (running `setup.sql`) is needed for it to work.
+
 ## Already set up for version 1?
 
 Run [`setup.sql`](setup.sql) once more (SQL Editor > paste > Run): it adds the table and function that

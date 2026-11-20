@@ -130,7 +130,8 @@ A.newProject = function (name) {
     ],
     thresholds: A.defaultThresholds(),
     tasks: [], resources: [], assignments: [], contracts: [],
-    baseline: null, baselines: [], baselineId: 0, statuses: [], eacMethod: 'cpi', shared: null, nextId: 100
+    baseline: null, baselines: [], baselineId: 0, statuses: [], eacMethod: 'cpi', shared: null,
+    stakeholders: [], results: [], kpis: [], risks: [], issues: [], definition: null, nextId: 100
   };
 };
 A.newTask = function (name, level, extra) {
@@ -173,6 +174,9 @@ A.normalize = function (p) {
     ['milestones', 'payments', 'guarantees', 'changes'].forEach(function (g) { c[g].forEach(seen); });
   });
   p.categories.forEach(seen); (p.statuses || []).forEach(seen);
+  ['stakeholders', 'results', 'kpis', 'risks', 'issues'].forEach(function (k) { if (!Array.isArray(p[k])) p[k] = []; p[k].forEach(seen); });
+  p.results.forEach(function (r) { if (!Array.isArray(r.indicators)) r.indicators = []; r.indicators.forEach(seen); });
+  p.risks.forEach(function (r) { if (!Array.isArray(r.actions)) r.actions = []; r.actions.forEach(seen); });
   /* baselines: version 1 files have a single p.baseline */
   if (!Array.isArray(p.baselines)) p.baselines = [];
   if (p.baseline && !p.baselines.length) { p.baselines.push(Object.assign({ id: maxId + 1, name: A.L('Baseline', 'Référence') }, p.baseline)); p.baselineId = maxId + 1; }

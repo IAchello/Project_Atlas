@@ -1,9 +1,9 @@
 /* Project Atlas — online sharing settings.
-   Fill in the two values of your Supabase project (Project Settings > API) so that everyone who opens
-   the app can use shared projects. Both are public values: the "anon" key is meant to be visible in a web page.
-   Leave empty to keep online sharing switched off. See supabase/README.md. */
+   The two values of the Supabase project (Project Settings > API). Both are public values: the "anon" /
+   "publishable" key is meant to be visible in a web page; each shared project is protected by its edit code.
+   Empty both to switch online sharing off. See supabase/README.md. */
 var A = globalThis.A = globalThis.A || {};
 A.cloudConfig = {
-  url: '',   // e.g. 'https://abcdefghijkl.supabase.co'
-  key: ''    // the "anon" / "publishable" key
+  url: 'https://qmqubhhmytznawovuagb.supabase.co',
+  key: 'sb_publishable_A95hSE5gbplmg7I64Tr4Og_VThkicNV'
 };

@@ -1,6 +1,6 @@
 /* Engine checks, run with: node tests/engine.test.js */
 const path = require('path');
-['core', 'schedule', 'procure', 'example', 'io', 'evm', 'ui', 'cloud'].forEach(f => require(path.join('..', 'js', f + '.js')));
+['core', 'schedule', 'procure', 'example', 'io', 'evm', 'pm', 'ui', 'cloud'].forEach(f => require(path.join('..', 'js', f + '.js')));
 const A = globalThis.A;
 let fails = 0;
 function ok(cond, msg) { if (!cond) { fails++; console.log('FAIL  ' + msg); } else console.log('ok    ' + msg); }
@@ -135,6 +135,23 @@ eq(mg.tasks[2].dur, 30, 'same field changed by both: the person saving wins');
 eq(mg.name, "Renamed by Ann", "project name from local"); eq(mg.resources.length, 1, 'remote resource added');
 eq(mg.statuses[0].pct[base.tasks[0].id] + '|' + mg.statuses[0].ac[base.tasks[0].id], '50|999', 'progress entered by two people on one status date is combined');
 const m2 = A.cloud.merge(base, base, remote); eq(JSON.stringify(m2.tasks), JSON.stringify(remote.tasks), 'no local change: remote wins entirely');
+
+/* ---- stakeholders, results, risks ---- */
+A.lang = 'en'; A.P = A.buildAzuriya(); S = A.recalc();
+eq(A.P.stakeholders.length + '|' + A.P.results.length + '|' + A.P.risks.length + '|' + A.P.kpis.length, '7|5|7|3', 'Azuriya example carries stakeholders, results, risks and KPIs');
+eq(A.pm.suggestStrategy({ power: 3, interest: 3 }) + ',' + A.pm.suggestStrategy({ power: 3, interest: 1 }) + ',' + A.pm.suggestStrategy({ power: 1, interest: 3 }) + ',' + A.pm.suggestStrategy({ power: 1, interest: 1 }), 'collaborate,satisfy,inform,monitor', 'power / interest strategies');
+eq([25, 12, 8, 4, 2].map(A.pm.band).join(','), 'vh,h,m,l,vl', 'risk score bands');
+const r1 = A.P.risks[0]; eq(A.pm.score(r1.prob, r1.impact), 12, 'R01 score'); eq(Math.round(A.pm.emv(r1)), 144000, 'EMV = 40 % x 360,000');
+const opp = A.P.risks.find(r => r.kind === 'opportunity'); ok(A.pm.emv(opp) < 0, 'opportunities reduce the reserve');
+const rs = A.pm.riskSummary(); eq(rs.open, 7, 'all risks active'); ok(rs.reserve > 0 && rs.reserve < 2000000, 'reserve in a plausible range (' + Math.round(rs.reserve) + ')');
+const outs = A.P.results.filter(r => r.level === 'output'); ok(outs.every(r => r.task && S.info.get(r.task) && !S.info.get(r.task).parent), 'outputs are linked to the top-level components');
+eq(A.pm.indicatorProgress({ baseline: '45', target: '80', actual: '62' }), (62 - 45) / 35 * 100, 'indicator progress');
+A.P = A.newProject('x'); A.ops.insert(null, 'Comp A', 0); A.ops.insert(null, 'Comp B', 0); S = A.recalc();
+eq(A.pm.resultsFromWBS(), 2, 'two outputs from two components'); eq(A.P.results.length, 4, 'impact + outcome + 2 outputs');
+A.P.results[1].assumptions = 'Funding arrives on time'; eq(A.pm.risksFromAssumptions(), 1, 'one risk per assumption'); eq(A.pm.risksFromAssumptions(), 0, 'not twice');
+const tb = A.pm.tables(); ok(tb.risks.length === 2 && tb.results.length === 5 && tb.stakeholders.length === 1, 'export tables');
+const bse = A.clone(A.P), lcl = A.clone(A.P), rmt = A.clone(A.P); lcl.risks[0].owner = 'Ann'; rmt.risks[0].review = '2027-01-01'; rmt.stakeholders.push(A.pm.newStakeholder('Bob side'));
+const mg2 = A.cloud.merge(bse, lcl, rmt); eq(mg2.risks[0].owner + '|' + mg2.risks[0].review + '|' + mg2.stakeholders.length, 'Ann|2027-01-01|1', 'new lists merge field by field');
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
 process.exit(fails ? 1 : 0);

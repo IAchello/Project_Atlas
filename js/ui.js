@@ -2,7 +2,7 @@
 var A = globalThis.A = globalThis.A || {};
 A.ui = { tab: 'dashboard', sel: new Set(), anchor: null, zoom: null, showCrit: true, showBase: false, gridW: 620, filter: 'all', wbsZoom: 1, cSel: new Set(),
   contractId: null, contractTab: 'general', wbsDir: 'h', wbsDepth: 0, wbsCost: true, cfStep: 'quarter', cfBy: 'category', resId: null,
-  report: { summary: true, wbs: true, gantt: true, budget: true, cashflow: true, procurement: true, contracts: true, dictionary: false, evm: true } };
+  report: { summary: true, wbs: true, gantt: true, budget: true, cashflow: true, procurement: true, contracts: true, dictionary: false, evm: true, definition: true, stakeholders: true, risks: true } };
 A.views = {};
 
 /* h('div.card#id', {onclick: fn, title: 'x'}, child, 'text', [more]) */
@@ -184,7 +184,7 @@ A.listEditor = function (o) {
 /* simple read-only table from an array of rows (first row = header); numeric cells right-aligned and formatted */
 A.simpleTable = function (rows, opts) {
   opts = opts || {};
-  var t = A.h('table.data' + (opts.cls ? '.' + opts.cls : ''));
+  var t = A.h('table.data' + (opts.cls ? '.' + opts.cls.trim().replace(/\s+/g, '.') : ''));
   t.appendChild(A.h('thead', A.h('tr', rows[0].map(function (c, j) { return A.h('th' + (j && opts.num !== false ? '.r' : ''), c); }))));
   var tb = A.h('tbody');
   rows.slice(1).forEach(function (r, i) {

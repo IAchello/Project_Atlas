@@ -387,5 +387,11 @@ A.exportXLSX = function () {
   sheet(L('Cash flow by category', 'Trésorerie par catégorie'), A.tableCashflowRows('month', 'category'), [30]);
   sheet(L('Cash flow by component', 'Trésorerie par composante'), A.tableCashflowRows('month', 'component'), [50]);
   if ((A.P.statuses || []).length) sheet(L('Earned value', 'Valeur acquise'), A.evm.table(), [14]);
+  var pm = A.pm.tables();
+  if ((A.P.stakeholders || []).length) sheet(L('Stakeholders', 'Parties prenantes'), pm.stakeholders, [28, 12, 40]);
+  if ((A.P.results || []).length) sheet(L('Results framework', 'Cadre de résultats'), pm.results, [22, 44, 30, 40]);
+  if ((A.P.kpis || []).length) sheet('KPI', pm.kpis, [44]);
+  if ((A.P.risks || []).length) { sheet(L('Risks', 'Risques'), pm.risks, [6, 12, 18, 70]); sheet(L('Risk responses', 'Réponses aux risques'), pm.actions, [40, 40]); }
+  if ((A.P.issues || []).length) sheet(L('Issues', 'Problèmes'), pm.issues, [6, 12, 40, 40]);
   XLSX.writeFile(wb, A.fileName('.xlsx'));
 };
