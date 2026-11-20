@@ -35,7 +35,16 @@ p.muted { margin: 10px 0 0; font-size: .92rem; max-width: 110ch; }
 #tabs button { background: none; border: 0; color: #c9d8ec; font: inherit; padding: 9px 14px; cursor: pointer; border-bottom: 3px solid transparent; white-space: nowrap; }
 #tabs button:hover { color: #fff; }
 #tabs button { font-weight: 600; }
-#tabs button.on { color: #fff; border-bottom-color: var(--cyan); }
+#tabs button.on { color: #fff; border-bottom-color: var(--cyan); background: rgba(255, 255, 255, .06); }
+#tabs .count { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 5px; border-radius: 9px; background: rgba(255, 255, 255, .14); color: #dbe9f8; font-size: .75rem; font-weight: 600; text-align: center; }
+#subtabs { background: var(--card); border-bottom: 1px solid var(--line); display: flex; gap: 2px; padding: 0 12px; overflow-x: auto; }
+#subtabs[hidden] { display: none; }
+#subtabs button { background: none; border: 0; color: var(--muted); font: inherit; font-weight: 600; padding: 8px 14px; cursor: pointer; border-bottom: 3px solid transparent; white-space: nowrap; }
+#subtabs button:hover { color: var(--navy); } #subtabs button.on { color: var(--navy); border-bottom-color: var(--blue); }
+details.modules > summary { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mod-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; margin-top: 4px; }
+.mod { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; background: var(--stripe); }
+.mod.off { opacity: .6; } .mod-head b { color: var(--navy); } .mod-sub { padding-left: 22px; font-size: .93rem; }
 main { padding: 14px 18px 40px; max-width: 1800px; margin: 0 auto; }
 
 /* buttons and inputs */
@@ -243,6 +252,7 @@ table { border-collapse: collapse; width: 100%; }
 
 /* stakeholders, results, risks */
 .list.pm td { vertical-align: top; padding: 4px; } .list.pm td .in { min-width: 0; } .list.pm textarea.in { min-height: 48px; resize: vertical; font-size: .92rem; line-height: 1.3; }
+.list.pm.risks { min-width: 2900px; } .list.pm.lf { min-width: 1500px; } .list.pm.risks td .in, .list.pm.lf td .in { min-width: 0; }
 .list.pm tr.hl td { background: #fff8e6; } .list.pm tr.group td { background: var(--navy); color: #fff; font-weight: 700; padding: 6px 10px; }
 .list.pm td.warn { color: var(--warn); font-weight: 700; } .list.pm ul.ind { margin: 4px 0; padding-left: 16px; font-size: .9rem; } .list.pm .small, .small { font-size: .82rem; }
 .pill.prio3 { background: var(--bad-bg); border-color: #e2a79f; color: #7d2118; } .pill.prio2 { background: var(--warn-bg); border-color: #e0b060; color: #6b4300; } .pill.prio1 { background: var(--ok-bg); border-color: #9fd3b4; color: #14573a; }
@@ -275,7 +285,7 @@ table { border-collapse: collapse; width: 100%; }
 @media print {
   @page { size: A4 landscape; margin: 10mm; }
   html { font-size: 11px; } body { background: #fff; }
-  .noprint, #head, #tabs, #toasts { display: none !important; }
+  .noprint, #head, #tabs, #subtabs, #toasts { display: none !important; }
   main { padding: 0; max-width: none; }
   .report { display: block; } .page { border: 0; box-shadow: none; padding: 0; max-width: none; break-after: page; } .page:last-child { break-after: auto; }
   .card, .toolbar, .kpi { break-inside: avoid; } tr { break-inside: avoid; }

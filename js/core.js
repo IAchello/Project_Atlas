@@ -199,7 +199,7 @@ A.undoStack = []; A.redoStack = [];
 A.onChange = null;    // set by the UI
 A.storageKey = 'project-atlas.v2.current';
 A.storageKeyV1 = 'project-atlas.current';
-A.APP_VERSION = '2.0';
+A.APP_VERSION = '2.1';
 
 A.setProject = function (p, keepUndo) {
   A.P = A.normalize(p);

@@ -31,8 +31,31 @@ var A = globalThis.A = globalThis.A || {};
   }
 
   /* ---------- Dashboard ---------- */
+  /* show / hide modules and their sub-components */
+  A.modulesPanel = function () {
+    var ui = A.ui, open = !!ui.modOpen;
+    var det = h('details.card.modules', { open: open || null, ontoggle: function (e) { ui.modOpen = e.target.open; } },
+      h('summary', A.icon('gear'), ' ' + L('Show / hide modules', 'Afficher / masquer les modules'), h('span.muted', '  ' + L('choose the parts of Project Atlas you use; hidden ones leave the menu, their data is kept', 'choisir les parties de Project Atlas utilisées ; celles masquées quittent le menu, leurs données sont conservées'))));
+    var grid = h('div.mod-grid');
+    A.NAV().forEach(function (g) {
+      var shown = g.fixed || !ui.hidden.has(g.id);
+      var box = h('div.mod' + (shown ? '' : '.off'), h('label.chk.mod-head', h('input', { type: 'checkbox', checked: shown, disabled: g.fixed, onchange: function (e) { A.setShown(g.id, e.target.checked); } }), h('b', g.name), g.fixed ? h('span.muted.small', L(' always shown', ' toujours affiché')) : null));
+      (g.subs || []).forEach(function (s) {
+        box.appendChild(h('label.chk.mod-sub', h('input', { type: 'checkbox', checked: !ui.hidden.has(s[0]), disabled: !shown, onchange: function (e) {
+          if (!e.target.checked && A.visibleSubs(g).length === 1) { A.setShown(g.id, false); ui.hidden.add(s[0]); return; } // last part hidden: hide the category
+          A.setShown(s[0], e.target.checked);
+        } }), s[1]));
+      });
+      grid.appendChild(box);
+    });
+    det.appendChild(grid);
+    det.appendChild(h('div.list-bar', A.btn('expand', L('Show everything', 'Tout afficher'), function () { ui.hidden = new Set(); A.setShown('dashboard', true); }, { ghost: true }),
+      A.btn(null, L('Planning only', 'Planification seulement'), function () { ui.hidden = new Set(['g-definition', 'g-contracts', 'evm']); A.setShown('g-planning', true); }, { ghost: true, title: L('Project, WBS, Gantt, resources, budget and reports', 'Projet, WBS, Gantt, ressources, budget et rapports') })));
+    return det;
+  };
   A.views.dashboard = function (root) {
     var P = A.P, S = A.S, cur = P.currency;
+    root.appendChild(A.modulesPanel());
     if (!P.tasks.length) {
       root.appendChild(h('div.welcome',
         h('h1', L('Welcome to Project Atlas', 'Bienvenue dans Project Atlas')),

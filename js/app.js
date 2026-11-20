@@ -2,19 +2,49 @@
 var A = globalThis.A = globalThis.A || {};
 (function () {
   var h = A.h, L = A.L;
-  function tabs() {
-    return [['dashboard', L('Dashboard', 'Tableau de bord')], ['wbs', 'WBS'], ['gantt', 'Gantt'], ['resources', L('Resources', 'Ressources')],
-      ['procurement', L('Procurement', 'Passation')], ['contracts', L('Contracts', 'Contrats')], ['finance', L('Budget & cash flow', 'Budget et trésorerie')], ['evm', L('Earned value', 'Valeur acquise')],
-      ['definition', L('Definition & results', 'Définition et résultats')], ['stakeholders', L('Stakeholders', 'Parties prenantes')], ['risks', L('Risks & issues', 'Risques et problèmes')],
-      ['reports', L('Reports', 'Rapports')], ['project', L('Project', 'Projet')]];
-  }
+  /* navigation: categories and their sub-components. A category without `subs` is a single screen. */
+  A.NAV = function () {
+    return [
+      { id: 'dashboard', name: L('Dashboard', 'Tableau de bord'), fixed: true },
+      { id: 'project', name: L('Project', 'Projet'), fixed: true },
+      { id: 'g-definition', name: L('Definition', 'Définition'), subs: [['definition', L('Definition & results', 'Définition et résultats')], ['stakeholders', L('Stakeholders', 'Parties prenantes')], ['risks', L('Risks & issues', 'Risques et problèmes')]] },
+      { id: 'g-planning', name: L('Planning', 'Planification'), subs: [['wbs', 'WBS'], ['gantt', 'Gantt'], ['resources', L('Resources', 'Ressources')]] },
+      { id: 'g-contracts', name: L('Contract Management', 'Gestion des contrats'), subs: [['procurement', L('Procurement', 'Passation')], ['contracts', L('Contracts', 'Contrats')]] },
+      { id: 'g-monitoring', name: L('Monitoring and Reporting', 'Suivi et rapports'), subs: [['finance', L('Budget & cash flow', 'Budget et trésorerie')], ['evm', L('Earned value', 'Valeur acquise')], ['reports', L('Reports', 'Rapports')]] }
+    ];
+  };
+  A.groupOf = function (tab) { var g = A.NAV().find(function (c) { return c.id === tab || (c.subs || []).some(function (s) { return s[0] === tab; }); }); return g || A.NAV()[0]; };
+  /* modules hidden by this user (kept in this browser, not in the project) */
+  A.ui.hidden = new Set(); A.ui.lastSub = {};
+  A.isShown = function (id) {
+    if (A.ui.hidden.has(id)) return false;
+    var g = A.NAV().find(function (c) { return (c.subs || []).some(function (s) { return s[0] === id; }); });
+    return !g || !A.ui.hidden.has(g.id);
+  };
+  A.visibleSubs = function (g) { return (g.subs || []).filter(function (s) { return A.isShown(s[0]); }); };
+  A.groupShown = function (g) { return g.fixed || (!A.ui.hidden.has(g.id) && A.visibleSubs(g).length > 0); };
+  A.setShown = function (id, on) {
+    if (on) A.ui.hidden.delete(id); else A.ui.hidden.add(id);
+    var g = A.NAV().find(function (c) { return c.id === id; });
+    if (on && g && g.subs && !A.visibleSubs(g).length) g.subs.forEach(function (s) { A.ui.hidden.delete(s[0]); }); // showing a category with every part hidden shows the parts too
+    if (!A.isShown(A.ui.tab) || !A.groupShown(A.groupOf(A.ui.tab))) A.ui.tab = 'dashboard';
+    prefs(true); A.refresh();
+  };
   function prefs(save) {
     try {
-      if (save) localStorage.setItem('project-atlas.prefs', JSON.stringify({ lang: A.lang, tab: A.ui.tab }));
+      if (save) localStorage.setItem('project-atlas.prefs', JSON.stringify({ lang: A.lang, tab: A.ui.tab, hidden: Array.from(A.ui.hidden), lastSub: A.ui.lastSub }));
       else return JSON.parse(localStorage.getItem('project-atlas.prefs') || '{}');
     } catch (e) { return {}; }
   }
-  A.go = function (tab) { A.ui.tab = tab; prefs(true); A.refresh(); window.scrollTo(0, 0); };
+  A.go = function (tab) {
+    if (!A.isShown(tab) || !A.groupShown(A.groupOf(tab))) { A.ui.hidden.delete(tab); A.ui.hidden.delete(A.groupOf(tab).id); } // opening a hidden screen from a link shows it again
+    var g = A.groupOf(tab); if (g.subs) A.ui.lastSub[g.id] = tab;
+    A.ui.tab = tab; prefs(true); A.refresh(); window.scrollTo(0, 0);
+  };
+  A.goGroup = function (g) {
+    var vis = A.visibleSubs(g), last = A.ui.lastSub[g.id];
+    A.go(g.subs ? (vis.some(function (s) { return s[0] === last; }) ? last : vis[0][0]) : g.id);
+  };
 
   /* ---------- files ---------- */
   function guard(fn) {
@@ -101,8 +131,15 @@ var A = globalThis.A = globalThis.A || {};
       A.btn('redo', L('Redo (Ctrl+Y)', 'Rétablir (Ctrl+Y)'), A.redo, { iconOnly: true, disabled: !A.redoStack.length }),
       h('div.seg.lang', h('button' + (A.lang === 'fr' ? '.on' : ''), { type: 'button', onclick: function () { setLang('fr'); } }, 'FR'), h('button' + (A.lang === 'en' ? '.on' : ''), { type: 'button', onclick: function () { setLang('en'); } }, 'EN'))));
     head.querySelectorAll('.headtools > .btn').forEach(function (b) { if (!b.classList.contains('primary')) b.classList.add('onhead'); });
-    var nav = document.getElementById('tabs'); nav.textContent = '';
-    tabs().forEach(function (t) { nav.appendChild(h('button' + (A.ui.tab === t[0] ? '.on' : ''), { type: 'button', role: 'tab', 'aria-selected': A.ui.tab === t[0] ? 'true' : 'false', onclick: function () { A.go(t[0]); } }, t[1])); });
+    var nav = document.getElementById('tabs'), subnav = document.getElementById('subtabs'), cur = A.groupOf(A.ui.tab); nav.textContent = ''; subnav.textContent = '';
+    A.NAV().forEach(function (g) {
+      if (!A.groupShown(g) && g !== cur) return;
+      var on = g === cur;
+      nav.appendChild(h('button' + (on ? '.on' : ''), { type: 'button', role: 'tab', 'aria-selected': on ? 'true' : 'false', onclick: function () { A.goGroup(g); } }, g.name, g.subs ? h('span.count', A.visibleSubs(g).length) : null));
+    });
+    var subs = (cur.subs || []).filter(function (s) { return A.isShown(s[0]) || s[0] === A.ui.tab; });
+    subnav.hidden = !subs.length;
+    subs.forEach(function (s) { subnav.appendChild(h('button' + (A.ui.tab === s[0] ? '.on' : ''), { type: 'button', role: 'tab', 'aria-selected': A.ui.tab === s[0] ? 'true' : 'false', onclick: function () { A.go(s[0]); } }, s[1])); });
     document.documentElement.lang = A.lang;
     document.title = A.P.name + ' — Project Atlas';
   }
@@ -137,7 +174,8 @@ var A = globalThis.A = globalThis.A || {};
     A.lang = pf.lang || ((navigator.language || 'en').slice(0, 2) === 'fr' ? 'fr' : 'en');
     var p = null;
     try { p = JSON.parse(localStorage.getItem(A.storageKey) || 'null'); if (!p) p = JSON.parse(localStorage.getItem(A.storageKeyV1) || 'null'); /* first start of version 2: continue with the version 1 project */ } catch (e) { p = null; }
-    if (p && Array.isArray(p.tasks)) { A.P = A.normalize(p); if (pf.tab && A.views[pf.tab]) A.ui.tab = pf.tab; }
+    A.ui.hidden = new Set(pf.hidden || []); A.ui.lastSub = pf.lastSub || {};
+    if (p && Array.isArray(p.tasks)) { A.P = A.normalize(p); if (pf.tab && A.views[pf.tab] && A.isShown(pf.tab) && A.groupShown(A.groupOf(pf.tab))) A.ui.tab = pf.tab; }
     else A.P = A.newProject();
     A.recalc();
     A.refresh();

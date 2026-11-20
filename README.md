@@ -20,6 +20,8 @@ Projects are kept in the browser and saved to `.atlas` files.
   with indicators and assumptions linked to WBS components, KPIs; stakeholder analysis grid, power / interest matrix,
   engagement sheets and communication plan; risk register with P × I matrix, response control plan, EMV reserves
   and issue log. All exported to Excel and the printed report.
+- **Navigation** (version 2.1): six categories (Dashboard, Project, Definition, Planning, Contract Management,
+  Monitoring and Reporting) with sub-menus; each user can show or hide modules from the Dashboard.
 - **Version 2 additions**: currency list and duration unit on the Project tab, budget lines, movable and foldable WBS boxes with zoom,
   resource drop-down and task filter in the Gantt, resources on summary tasks, up to ten baselines, accounting categories
   and material capacities for resources, multi-selection of contracts, simultaneous editing of shared projects.
