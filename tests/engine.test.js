@@ -1,6 +1,6 @@
 /* Engine checks, run with: node tests/engine.test.js */
 const path = require('path');
-['core', 'schedule', 'procure', 'example', 'io', 'evm'].forEach(f => require(path.join('..', 'js', f + '.js')));
+['core', 'schedule', 'procure', 'example', 'io', 'evm', 'ui', 'cloud'].forEach(f => require(path.join('..', 'js', f + '.js')));
 const A = globalThis.A;
 let fails = 0;
 function ok(cond, msg) { if (!cond) { fails++; console.log('FAIL  ' + msg); } else console.log('ok    ' + msg); }
@@ -98,6 +98,43 @@ eq(A.P.tasks[2].pct, 85, 'latest status drives task progress'); eq(A.P.statusDat
 A.lang = 'en'; A.P = A.buildAzuriya(); S = A.recalc();
 const mz = A.evm.metrics(S, { date: A.toISO(S.finish), pct: {}, ac: {} });
 eq(Math.round(mz.tot.pv), 27885450, 'Azuriya PV at the finish equals the budget');
+
+/* ---- version 2: display unit, baselines, re-parenting, summary resources, material capacity ---- */
+A.lang = 'en'; A.P = A.buildAzuriya(); S = A.recalc();
+A.P.durUnit = 'mo'; eq(A.fmtDurT(240, A.P.tasks[2]), '12 mo', 'durations shown in months when the project says so');
+A.P.durUnit = 'w'; eq(A.fmtDurT(10, A.P.tasks[2]), '2 wks', 'durations shown in weeks'); A.P.durUnit = 'auto';
+const n0 = A.P.baselines.length; eq(n0, 1, 'the example has one baseline');
+A.setBaseline('Approved plan'); eq(A.P.baselines.length + '|' + A.P.baseline.name, '2|Approved plan', 'second baseline saved and in use');
+A.useBaseline(A.P.baselines[0].id); eq(A.P.baseline.id, A.P.baselines[0].id, 'baseline switched');
+A.clearBaseline(); eq(A.P.baselines.length + '|' + A.P.baseline.name, '1|Approved plan', 'clear removes the one in use, the other takes over');
+for (let i = 0; i < 12; i++) A.setBaseline('b' + i); eq(A.P.baselines.length, 10, 'never more than ten baselines');
+const hosp = A.P.tasks.find(t => /Hospital construction works/.test(t.name)), c2 = A.P.tasks.find(t => /Rehabilitation of 3/.test(t.name));
+ok(A.ops.reparent(hosp.id, c2.id, 'child'), 'move the hospital works under component 2');
+S = A.recalc(); eq(S.info.get(hosp.id).parent.id, c2.id, 'new parent'); eq(S.info.get(hosp.id).t.level, 1, 'level follows the new parent');
+ok(!A.ops.reparent(c2.id, hosp.id, 'child'), 'cannot drop a task inside its own sub-tree');
+const eqN = A.P.tasks.find(t => /Equipment HCC North/.test(t.name)), eqW = A.P.tasks.find(t => /Equipment HCC West/.test(t.name));
+A.ops.reparent(eqW.id, eqN.id, 'before'); eq(A.taskIndex(eqW.id) + 1, A.taskIndex(eqN.id), 'reorder before a sibling');
+const rr = A.newResource('Site engineer', 'work'); rr.rate = 1000; rr.per = 'd'; A.P.resources.push(rr);
+const sum = A.P.tasks.find(t => /Category 1: Construction/.test(t.name)); A.P.assignments.push({ task: sum.id, res: rr.id, units: 50 }); S = A.recalc();
+ok(S.info.get(sum.id).own > 0 && Math.abs(S.info.get(sum.id).own - S.info.get(sum.id).dur * 500) < 1, 'a resource assigned to a summary task costs units x summary duration');
+const mat = A.newResource('Cement', 'material'); mat.max = 100; mat.unit = 't'; A.P.resources.push(mat);
+A.P.assignments.push({ task: hosp.id, res: mat.id, units: 80 }); A.P.assignments.push({ task: eqN.id, res: mat.id, units: 30 }); S = A.recalc();
+const ov = A.overallocations(S).find(o => o.res.id === mat.id); ok(ov && ov.qty && ov.peak === 110, 'material over its available quantity is flagged');
+const bud = A.tableBudget(); ok(bud[0][0] === 'Component' && A.catLabel() === 'Budget line', 'budget lines wording');
+
+/* ---- three-way merge for shared projects ---- */
+A.P = A.buildABCDE(); A.P.shared = { id: 'x' }; S = A.recalc();
+const base = A.clone(A.P), local = A.clone(A.P), remote = A.clone(A.P);
+local.tasks[0].name = 'A (Ann)'; local.tasks.push(Object.assign(A.newTask('New by Ann', 0), { id: 9001, dur: 3 })); local.name = 'Renamed by Ann';
+remote.tasks[1].name = 'B (Bob)'; remote.tasks[2].dur = 25; remote.tasks.splice(3, 1); remote.resources.push(Object.assign(A.newResource('Bob res', 'work'), { id: 9002 }));
+remote.statuses[0].pct[remote.tasks[0].id] = 50; local.statuses[0].ac[local.tasks[0].id] = 999;
+local.tasks[2].dur = 30; // both changed task C's duration: the saver (local) wins
+const mg = A.cloud.merge(base, local, remote);
+eq(mg.tasks.map(t => t.name).join('|'), 'A (Ann)|B (Bob)|C|E|New by Ann', 'merged task list: both renames, remote deletion, local addition at the end');
+eq(mg.tasks[2].dur, 30, 'same field changed by both: the person saving wins');
+eq(mg.name, "Renamed by Ann", "project name from local"); eq(mg.resources.length, 1, 'remote resource added');
+eq(mg.statuses[0].pct[base.tasks[0].id] + '|' + mg.statuses[0].ac[base.tasks[0].id], '50|999', 'progress entered by two people on one status date is combined');
+const m2 = A.cloud.merge(base, base, remote); eq(JSON.stringify(m2.tasks), JSON.stringify(remote.tasks), 'no local change: remote wins entirely');
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
 process.exit(fails ? 1 : 0);

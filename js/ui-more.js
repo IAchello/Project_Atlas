@@ -43,7 +43,7 @@ var A = globalThis.A = globalThis.A || {};
           A.btn('book', L('Load the example: Azuriya Health Project', "Charger l'exemple : Projet Santé Azuriya"), function () { A.loadExample(); }),
           A.btn('open', L('Open a file…', 'Ouvrir un fichier…'), function () { A.fileOpen(); })),
         h('ol.steps',
-          h('li', h('b', L('Project', 'Projet')), L(' — name, start date, currency, working days, expense categories.', ' — nom, date de début, devise, jours ouvrés, catégories de dépenses.')),
+          h('li', h('b', L('Project', 'Projet')), L(' — name, start date, currency, working days, budget lines.', ' — nom, date de début, devise, jours ouvrés, lignes budgétaires.')),
           h('li', h('b', 'WBS'), L(' — break the project into components and work packages. Each box is a task.', ' — découper le projet en composantes et lots de travaux. Chaque case est une tâche.')),
           h('li', h('b', 'Gantt'), L(' — durations, links, costs and resources; Atlas computes dates and the critical path.', ' — durées, liens, coûts et ressources ; Atlas calcule les dates et le chemin critique.')),
           h('li', h('b', L('Procurement and contracts', 'Passation et contrats')), L(' — methods, procurement steps, then milestones, payments, guarantees and amendments.', ' — méthodes, étapes de passation, puis jalons, paiements, garanties et avenants.')),
@@ -55,7 +55,7 @@ var A = globalThis.A = globalThis.A || {};
     var today = A.toDay(P.statusDate) || A.toDay(A.todayISO()), late = S.nodes.filter(function (n) { return !n.summary && !n.isLoe && n.pct < 100 && n.finish < today; });
     root.appendChild(h('div.kpis',
       kpi(L('Start', 'Début'), A.fmtDate(S.start), P.financier || P.client || ''),
-      kpi(L('Finish', 'Fin'), A.fmtDate(S.finish), b ? (slip === 0 ? L('on baseline', 'conforme à la référence') : (slip > 0 ? '+' : '') + slip + L(' days vs baseline', ' jours / référence')) : months(S.PF) + L(' months', ' mois')),
+      kpi(L('Finish', 'Fin'), A.fmtDate(S.finish), b ? (slip === 0 ? L('on baseline ', 'conforme à la référence ') + b.name : (slip > 0 ? '+' : '') + slip + L(' days vs ', ' jours / ') + b.name) : months(S.PF) + L(' months', ' mois')),
       kpi(L('Duration', 'Durée'), months(S.PF) + L(' months', ' mois'), A.fmtNum(S.PF) + L(' working days', ' jours ouvrés')),
       kpi(L('Total cost', 'Coût total'), A.money(S.total), cur + (b && Math.abs(dcost) > 0.5 ? ' · ' + (dcost > 0 ? '+' : '') + A.money(dcost) + L(' vs baseline', ' / référence') : '')),
       kpi(L('Progress', 'Avancement'), Math.round(S.pct) + ' %', late.length ? late.length + L(' tasks late', ' tâches en retard') : L('no task late', 'aucune tâche en retard')),
@@ -89,7 +89,7 @@ var A = globalThis.A = globalThis.A || {};
     var P = A.P, S = A.S, ui = A.ui, cur = P.currency;
     var costOf = new Map(), countOf = new Map();
     P.assignments.forEach(function (a) {
-      var n = S.info.get(a.task), r = A.resById(a.res); if (!n || !r || n.summary) return;
+      var n = S.info.get(a.task), r = A.resById(a.res); if (!n || !r) return;
       costOf.set(r.id, (costOf.get(r.id) || 0) + A.assignCost(a, r, n.dur)); countOf.set(r.id, (countOf.get(r.id) || 0) + 1);
     });
     var over = A.overallocations(S), overIds = new Set(over.map(function (o) { return o.res.id; }));
@@ -97,11 +97,19 @@ var A = globalThis.A = globalThis.A || {};
       A.listEditor({
         id: 'res', rows: function () { return A.P.resources; },
         cols: [{ k: 'name', label: L('Name', 'Nom') },
-          { k: 'type', label: L('Type', 'Type'), type: 'select', w: 130, options: [{ id: 'work', name: L('Work (people, equipment)', 'Travail (personnes, équipements)') }, { id: 'material', name: L('Material', 'Matériau') }, { id: 'cost', name: L('Cost item', 'Poste de coût') }] },
-          { k: 'group', label: L('Group', 'Groupe'), w: 190 }, { k: 'max', label: L('Capacity %', 'Capacité %'), type: 'num', w: 90 },
+          { k: 'type', label: L('Type', 'Type'), type: 'select', w: 130, options: [{ id: 'work', name: L('Work (people, equipment)', 'Travail (personnes, équipements)') }, { id: 'material', name: L('Material', 'Matériau') }, { id: 'cost', name: L('Cost item', 'Poste de coût') }],
+            set: function (r, v) { r.type = v; if (v === 'material') { r.per = 'u'; if (r.max === 100) r.max = 0; } else if (v === 'work') { if (r.per === 'u') r.per = 'd'; r.unit = ''; if (!r.max) r.max = 100; } else { r.per = 'u'; r.unit = ''; r.max = 0; } } },
+          { k: 'group', label: L('Group', 'Groupe'), w: 150 },
+          { k: 'account', label: L('Accounting category', 'Catégorie comptable'), w: 160, placeholder: L('e.g. 6411 Salaries', 'p. ex. 6411 Salaires') },
+          { k: 'max', label: L('Capacity', 'Capacité'), type: 'num', w: 120, render: function (r, i, fk) {
+            if (r.type === 'cost') return h('span.muted', '—');
+            return h('div.cap', A.live(function () { return A.P.resources[i]; }, 'max', 'num', { fk: fk, zero: true }), h('span.unit', r.type === 'work' ? '%' : (r.unit || L('units', 'unités'))));
+          } },
           { k: 'rate', label: L('Rate', 'Taux') + ' (' + cur + ')', type: 'num', w: 110 },
-          { k: 'per', label: L('Per', 'Par'), type: 'select', w: 100, options: [{ id: 'h', name: L('hour', 'heure') }, { id: 'd', name: L('day', 'jour') }, { id: 'w', name: L('week', 'semaine') }, { id: 'mo', name: L('month', 'mois') }] },
-          { k: 'perUse', label: L('Cost per use', 'Coût par utilisation'), type: 'num', w: 120 }, { k: 'unit', label: L('Unit (materials)', 'Unité (matériaux)'), w: 110 },
+          { k: 'per', label: L('Per', 'Par'), type: 'select', w: 100, options: [{ id: 'h', name: L('hour', 'heure') }, { id: 'd', name: L('day', 'jour') }, { id: 'w', name: L('week', 'semaine') }, { id: 'mo', name: L('month', 'mois') }, { id: 'u', name: L('unit', 'unité') }],
+            disabled: function (r) { return r.type !== 'work'; }, lockTitle: function (r) { return r.type === 'material' ? L('Materials are priced per unit', 'Les matériaux sont tarifés à l’unité') : L('Cost items are entered as an amount on each task', 'Les postes de coût sont saisis en montant sur chaque tâche'); } },
+          { k: 'perUse', label: L('Cost per use', 'Coût par utilisation'), type: 'num', w: 120 },
+          { k: 'unit', label: L('Unit', 'Unité'), w: 100, placeholder: L('t, m³, kit…', 't, m³, kit…'), disabled: function (r) { return r.type !== 'material'; }, lockTitle: function () { return L('Only materials have a unit', 'Seuls les matériaux ont une unité'); } },
           { k: 'x', label: L('Tasks', 'Tâches'), ro: true, w: 60, get: function (r) { return countOf.get(r.id) || ''; } },
           { k: 'y', label: L('Cost', 'Coût'), ro: true, w: 110, get: function (r) { return costOf.get(r.id) ? A.money(costOf.get(r.id)) : ''; } }],
         rowClass: function (r) { return overIds.has(r.id) ? '.late' : ''; },
@@ -109,9 +117,9 @@ var A = globalThis.A = globalThis.A || {};
         del: function (r) { A.P.assignments = A.P.assignments.filter(function (a) { return a.res !== r.id; }); },
         addLabel: L('Add resource', 'Ajouter une ressource')
       }),
-      h('p.muted', L('For work resources the rate applies to the time assigned (units % × task duration). For materials it is the price of one unit; assign a quantity. Assign resources in the Resources column of the Gantt, e.g. “Engineer[50%]; Cement[20]”.',
-        'Pour les ressources de travail, le taux s’applique au temps affecté (unités % × durée de la tâche). Pour les matériaux, c’est le prix unitaire ; affecter une quantité. Affecter les ressources dans la colonne Ressources du Gantt, p. ex. « Ingénieur[50%]; Ciment[20] ».'))));
-    if (over.length) root.appendChild(h('div.banner.warn', A.icon('warn'), L('Over-allocated: ', 'En surcharge : ') + over.map(function (o) { return o.res.name + ' (' + Math.round(o.peak) + ' % ' + L('from ', 'dès le ') + A.fmtDate(o.day) + ')'; }).join(' · ')));
+      h('p.muted', L('Work resources: capacity in % (100 % = one full-time person), rate per hour, day, week or month applied to the time assigned. Materials: capacity is the quantity available for the project, rate per unit. Assign resources from the Resources column of the Gantt or in a task’s details.',
+        'Ressources de travail : capacité en % (100 % = une personne à temps plein), taux par heure, jour, semaine ou mois appliqué au temps affecté. Matériaux : la capacité est la quantité disponible pour le projet, taux à l’unité. Affecter les ressources depuis la colonne Ressources du Gantt ou dans les détails d’une tâche.'))));
+    if (over.length) root.appendChild(h('div.banner.warn', A.icon('warn'), L('Over-allocated: ', 'En surcharge : ') + over.map(function (o) { return o.res.name + (o.qty ? ' (' + A.fmtNum(o.peak, o.peak % 1 ? 1 : 0) + ' ' + (o.res.unit || L('units', 'unités')) + L(' assigned for ', ' affectées pour ') + A.fmtNum(o.res.max) + L(' available)', ' disponibles)') : ' (' + Math.round(o.peak) + ' % ' + L('from ', 'dès le ') + A.fmtDate(o.day) + ')'); }).join(' · ')));
     var work = P.resources.filter(function (r) { return r.type === 'work'; });
     if (!work.length) return;
     if (!work.some(function (r) { return r.id === ui.resId; })) ui.resId = (over[0] ? over[0].res : work[0]).id;
@@ -136,12 +144,12 @@ var A = globalThis.A = globalThis.A || {};
   A.views.finance = function (root) {
     var P = A.P, S = A.S, ui = A.ui, cur = P.currency;
     if (!P.tasks.length) { root.appendChild(h('div.empty-state', h('h3', L('No cost yet', 'Aucun coût pour le moment')), h('p', L('Enter costs in the Cost column of the Gantt.', 'Saisir les coûts dans la colonne Coût du Gantt.')))); return; }
-    root.appendChild(h('div.card', h('div.card-head', h('h2', L('Budget by component and expense category', 'Budget par composante et catégorie de dépense') + ' (' + cur + ')')),
+    root.appendChild(h('div.card', h('div.card-head', h('h2', L('Budget by component and budget line', 'Budget par composante et ligne budgétaire') + ' (' + cur + ')')),
       h('div.scroll-x', A.simpleTable(A.tableBudget(), { totalRows: 1, dash: true })),
-      h('p.muted', L('A task takes the category of its nearest parent unless it has its own. Categories are defined in the Project tab.', 'Une tâche prend la catégorie de son parent le plus proche, sauf si elle a la sienne. Les catégories sont définies dans l’onglet Projet.'))));
+      h('p.muted', L('A task takes the budget line of its nearest parent unless it has its own. Budget lines are defined in the Project tab.', 'Une tâche prend la ligne budgétaire de son parent le plus proche, sauf si elle a la sienne. Les lignes budgétaires sont définies dans l’onglet Projet.'))));
     var cf = A.tableCashflow(ui.cfStep, ui.cfBy), labels = cf.periods.map(function (p) { return p.label; });
     var controls = h('div.tg', seg(ui.cfStep, [['month', L('Monthly', 'Mensuel')], ['quarter', L('Quarterly', 'Trimestriel')], ['year', L('Yearly', 'Annuel')]], function (v) { ui.cfStep = v; }),
-      seg(ui.cfBy, [['category', L('By category', 'Par catégorie')], ['component', L('By component', 'Par composante')]], function (v) { ui.cfBy = v; }));
+      seg(ui.cfBy, [['category', L('By budget line', 'Par ligne budgétaire')], ['component', L('By component', 'Par composante')]], function (v) { ui.cfBy = v; }));
     root.appendChild(h('div.card', h('div.card-head', h('h2', L('Cash-flow plan', 'Plan de trésorerie') + ' (' + cur + ')'), h('span.sp'), controls),
       h('h3.ch-title', L('Planned spending per period', 'Dépenses prévues par période')),
       A.stackedBars({ labels: labels, height: 250, title: L('Planned spending per period', 'Dépenses prévues par période'), series: cf.groups.map(function (g, i) { return { name: g.label, color: A.SERIES[i % A.SERIES.length], values: g.v }; }) }),
@@ -154,11 +162,11 @@ var A = globalThis.A = globalThis.A || {};
 
   /* ---------- Reports ---------- */
   function dictRows() {
-    var rows = [[L('Code', 'Code'), L('WBS element', 'Élément du WBS'), L('Duration', 'Durée'), L('Start', 'Début'), L('Finish', 'Fin'), L('Cost', 'Coût') + ' (' + A.P.currency + ')', L('Category', 'Catégorie'), L('Contract', 'Contrat')]];
+    var rows = [[L('Code', 'Code'), L('WBS element', 'Élément du WBS'), L('Duration', 'Durée'), L('Start', 'Début'), L('Finish', 'Fin'), L('Cost', 'Coût') + ' (' + A.P.currency + ')', A.catLabel(), L('Contract', 'Contrat')]];
     A.S.nodes.forEach(function (n) {
       if (n.t.proc && !n.t.procSum) return;
       var c = A.contractById(n.t.contract || n.t.proc), cat = A.catById(n.cat);
-      rows.push([n.wbs, n.t.name, n.isMs ? '' : A.fmtDur(n.dur, n.t.unit), A.fmtDate(n.start), A.fmtDate(n.finish), Math.round(n.cost), cat ? cat.name : '', c ? (c.ref || '') : '']);
+      rows.push([n.wbs, n.t.name, n.isMs ? '' : A.fmtDurT(n.dur, n.t), A.fmtDate(n.start), A.fmtDate(n.finish), Math.round(n.cost), cat ? cat.name : '', c ? (c.ref || '') : '']);
     });
     return rows;
   }
@@ -172,16 +180,16 @@ var A = globalThis.A = globalThis.A || {};
           kpi(L('Total cost', 'Coût total'), A.money(S.total), cur), kpi(L('Progress', 'Avancement'), Math.round(S.pct) + ' %'), kpi(L('Contracts', 'Contrats'), String(P.contracts.length))),
         P.client || P.financier || P.manager ? h('p', [P.client, P.financier, P.manager].filter(Boolean).join(' · ')) : null,
         h('h3', L('Critical path', 'Chemin critique')),
-        A.simpleTable([[L('Code', 'Code'), L('Task', 'Tâche'), L('Duration', 'Durée'), L('Start', 'Début'), L('Finish', 'Fin')]].concat(crit.map(function (n) { return [n.wbs, n.t.name, A.fmtDur(n.dur, n.t.unit), A.fmtDate(n.start), A.fmtDate(n.finish)]; })), { num: false })));
+        A.simpleTable([[L('Code', 'Code'), L('Task', 'Tâche'), L('Duration', 'Durée'), L('Start', 'Début'), L('Finish', 'Fin')]].concat(crit.map(function (n) { return [n.wbs, n.t.name, A.fmtDurT(n.dur, n.t), A.fmtDate(n.start), A.fmtDate(n.finish)]; })), { num: false })));
     }
-    if (r.wbs) page(L('Work breakdown structure', 'Structure de découpage du projet (WBS)'), h('div.fit', { html: A.wbsSVG({ dir: 'h', depth: A.ui.wbsDepth, cost: true, steps: false, sel: null }).svg.replace(/ width="[^"]*" height="[^"]*"/, '') }), true);
+    if (r.wbs) page(L('Work breakdown structure', 'Structure de découpage du projet (WBS)'), h('div.fit', { html: A.wbsSVG({ dir: 'h', depth: A.ui.wbsDepth, cost: true, steps: false, fold: true, sel: null }).svg.replace(/ width="[^"]*" height="[^"]*"/, '') }), true);
     if (r.dictionary) page(L('WBS dictionary', 'Dictionnaire du WBS'), A.simpleTable(dictRows(), { num: false, cls: 'tight' }), true);
     if (r.gantt) {
       var rows = A.visibleRows(), per = 34;
       for (var i = 0; i < rows.length; i += per)
         page(L('Gantt chart', 'Diagramme de Gantt') + (rows.length > per ? ' (' + (i / per + 1) + '/' + Math.ceil(rows.length / per) + ')' : ''), h('div.fit', { html: A.ganttSVG(rows.slice(i, i + per), { base: A.ui.showBase }) }), true);
     }
-    if (r.budget) page(L('Budget by component and expense category', 'Budget par composante et catégorie de dépense') + ' (' + cur + ')', A.simpleTable(A.tableBudget(), { totalRows: 1, dash: true }));
+    if (r.budget) page(L('Budget by component and budget line', 'Budget par composante et ligne budgétaire') + ' (' + cur + ')', A.simpleTable(A.tableBudget(), { totalRows: 1, dash: true }));
     if (r.cashflow) {
       var cf = A.tableCashflow('quarter', 'category');
       page(L('Cash-flow plan by quarter', 'Plan de trésorerie trimestriel') + ' (' + cur + ')', h('div',
@@ -227,6 +235,14 @@ var A = globalThis.A = globalThis.A || {};
   };
 
   /* ---------- Project settings ---------- */
+  function currencySel() {
+    var cur = A.P.currency || '', list = A.CURRENCIES.slice(); if (cur && list.indexOf(cur) < 0) list.unshift(cur);
+    var sel = h('select.in', { 'data-fk': 'p:currency', onchange: function () {
+      if (sel.value !== '__other') { A.commitLater(function () { A.P.currency = sel.value; }); return; }
+      A.promptText(L('Currency or unit of cost', 'Devise ou unité de coût'), cur, function (v) { if (v) A.edit(function () { A.P.currency = v; }); else A.refresh(); });
+    } }, list.map(function (c) { return h('option', { value: c, selected: c === cur }, c); }), h('option', { value: '__other' }, L('Other…', 'Autre…')));
+    return sel;
+  }
   A.views.project = function (root) {
     var P = A.P, g = function () { return A.P; }, F = A.field;
     var I = function (k, type, opts) { return A.live(g, k, type, Object.assign({ fk: 'p:' + k }, opts || {})); };
@@ -234,7 +250,8 @@ var A = globalThis.A = globalThis.A || {};
     var dn = A.lang === 'fr' ? ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'] : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     root.appendChild(h('div.card', h('div.card-head', h('h2', L('Project', 'Projet'))),
       h('div.form',
-        h('div.cols4', F(L('Project name', 'Nom du projet'), I('name'), null, 'span2'), F(L('Start date', 'Date de début'), I('start', 'date')), F(L('Currency', 'Devise'), I('currency'))),
+        h('div.cols4', F(L('Project name', 'Nom du projet'), I('name'), null, 'span2'), F(L('Start date', 'Date de début'), I('start', 'date')), F(L('Currency', 'Devise'), currencySel())),
+        h('div.cols4', F(L('Durations shown in', 'Durées affichées en'), I('durUnit', 'select', { options: [{ id: 'auto', name: L('the unit typed for each task', 'l’unité saisie pour chaque tâche') }, { id: 'd', name: L('days', 'jours') }, { id: 'w', name: L('weeks', 'semaines') }, { id: 'mo', name: L('months', 'mois') }] }), L('in the Gantt, the WBS and the reports', 'dans le Gantt, le WBS et les rapports')), h('div'), h('div'), h('div')),
         h('div.cols4', F(L('Client / executing agency', 'Maître d’ouvrage / agence d’exécution'), I('client'), null, 'span2'), F(L('Financing', 'Financement'), I('financier')), F(L('Project manager', 'Chef de projet'), I('manager'))),
         h('div.cols4', F(L('Status date', 'Date d’état'), I('statusDate', 'date'), L('for progress and alerts; today if empty', 'pour l’avancement et les alertes ; aujourd’hui si vide')),
           F(L('WBS code of the project', 'Code WBS du projet'), I('wbsPrefix'), L('“1” gives 1.1, 1.2…; empty gives 1, 2…', '« 1 » donne 1.1, 1.2… ; vide donne 1, 2…')), h('div'), h('div')))));
@@ -250,9 +267,9 @@ var A = globalThis.A = globalThis.A || {};
       A.listEditor({ id: 'hol', rows: function () { return A.P.calendar.holidays; },
         cols: [{ k: 'name', label: L('Name', 'Nom') }, { k: 'from', label: L('From', 'Du'), type: 'date', w: 170 }, { k: 'to', label: L('To (included)', 'Au (inclus)'), type: 'date', w: 170 }],
         add: function () { return { name: L('Holiday', 'Jour férié'), from: A.P.start, to: A.P.start }; }, addLabel: L('Add holiday', 'Ajouter un jour férié'), empty: L('No holiday defined.', 'Aucun jour férié défini.') })));
-    root.appendChild(h('div.card', h('div.card-head', h('h2', L('Expense categories', 'Catégories de dépenses')), h('span.muted', L('as in the financing agreement', 'comme dans l’accord de financement'))),
-      A.listEditor({ id: 'cat', rows: function () { return A.P.categories; }, cols: [{ k: 'name', label: L('Category', 'Catégorie') }],
-        add: function () { return { id: A.uid(), name: L('New category', 'Nouvelle catégorie') }; }, del: function (c) { A.P.tasks.forEach(function (t) { if (t.cat === c.id) t.cat = 0; }); }, addLabel: L('Add category', 'Ajouter une catégorie') })));
+    root.appendChild(h('div.card', h('div.card-head', h('h2', A.catLabel(true)), h('span.muted', L('as in the financing agreement or the budget', 'comme dans l’accord de financement ou le budget'))),
+      A.listEditor({ id: 'cat', rows: function () { return A.P.categories; }, cols: [{ k: 'name', label: A.catLabel() }],
+        add: function () { return { id: A.uid(), name: L('New budget line', 'Nouvelle ligne budgétaire') }; }, del: function (c) { A.P.tasks.forEach(function (t) { if (t.cat === c.id) t.cat = 0; }); }, addLabel: L('Add budget line', 'Ajouter une ligne budgétaire') })));
     root.appendChild(A.cloud.settingsCard());
     var warn = P.calendar.daysPerWeek !== P.calendar.workDays.length;
     if (warn) root.insertBefore(h('div.banner.warn', A.icon('warn'), L('“Days per week” differs from the number of working days ticked: durations typed in weeks will not match calendar weeks.', '« Jours par semaine » diffère du nombre de jours ouvrés cochés : les durées saisies en semaines ne correspondront pas aux semaines du calendrier.')), root.children[1]);

@@ -49,7 +49,13 @@ A.fmtNum = function (n, dec) {
   return n.toLocaleString(A.lang === 'fr' ? 'fr-FR' : 'en-US', { maximumFractionDigits: dec || 0, minimumFractionDigits: dec || 0 });
 };
 A.money = function (n) { return (n == null || !isFinite(n)) ? '' : A.fmtNum(Math.round(n)); };
-A.uid = function () { return A.P.nextId++; };
+/* ids: sequential in a local project; time-based (with a random tail) in a shared project so that
+   two people adding tasks at the same time never produce the same id */
+A.uid = function () {
+  if (A.P && A.P.shared && A.P.shared.id) { var id = Date.now() * 1000 + Math.floor(Math.random() * 1000); if (id <= A.P.nextId) id = A.P.nextId + 1; A.P.nextId = id + 1; return id; }
+  return A.P.nextId++;
+};
+A.CURRENCIES = ['USD', 'EUR', 'XOF', 'XAF', 'CAD', 'GBP', 'CHF', 'MAD', 'DZD', 'TND', 'EGP', 'NGN', 'GHS', 'KES', 'TZS', 'UGX', 'RWF', 'BIF', 'ETB', 'CDF', 'GNF', 'MGA', 'MRU', 'HTG', 'KMF', 'DJF', 'SDG', 'ZAR', 'XPF', 'JPY', 'CNY', 'INR', 'BRL', 'AUD'];
 A.clone = function (o) { return JSON.parse(JSON.stringify(o)); };
 
 /* ---------- working calendar ---------- */
@@ -109,12 +115,12 @@ A.defaultThresholds = function () {
 };
 A.newProject = function (name) {
   return {
-    app: 'Project Atlas', version: 1,
+    app: 'Project Atlas', version: 2,
     name: name || A.L('New project', 'Nouveau projet'),
     client: '', financier: '', manager: '',
     start: A.todayISO(), statusDate: '', currency: 'USD',
     calendar: { workDays: [1, 2, 3, 4, 5], hoursPerDay: 8, daysPerWeek: 5, daysPerMonth: 20, holidays: [] },
-    wbsPrefix: '1',
+    wbsPrefix: '1', durUnit: 'auto',
     categories: [
       { id: 1, name: A.L('Category 1: Works', 'Catégorie 1 : Travaux') },
       { id: 2, name: A.L('Category 2: Goods', 'Catégorie 2 : Biens') },
@@ -124,7 +130,7 @@ A.newProject = function (name) {
     ],
     thresholds: A.defaultThresholds(),
     tasks: [], resources: [], assignments: [], contracts: [],
-    baseline: null, statuses: [], eacMethod: 'cpi', shared: null, nextId: 100
+    baseline: null, baselines: [], baselineId: 0, statuses: [], eacMethod: 'cpi', shared: null, nextId: 100
   };
 };
 A.newTask = function (name, level, extra) {
@@ -139,7 +145,7 @@ A.newTask = function (name, level, extra) {
   return t;
 };
 A.newResource = function (name, type) {
-  return { id: A.uid(), name: name || '', type: type || 'work', max: 100, rate: 0, per: 'd', perUse: 0, unit: '', group: '' };
+  return { id: A.uid(), name: name || '', type: type || 'work', max: type === 'material' ? 0 : 100, rate: 0, per: type === 'material' ? 'u' : 'd', perUse: 0, unit: '', group: '', account: '' };
 };
 A.newContract = function (title) {
   return {
@@ -167,9 +173,19 @@ A.normalize = function (p) {
     ['milestones', 'payments', 'guarantees', 'changes'].forEach(function (g) { c[g].forEach(seen); });
   });
   p.categories.forEach(seen); (p.statuses || []).forEach(seen);
+  /* baselines: version 1 files have a single p.baseline */
+  if (!Array.isArray(p.baselines)) p.baselines = [];
+  if (p.baseline && !p.baselines.length) { p.baselines.push(Object.assign({ id: maxId + 1, name: A.L('Baseline', 'Référence') }, p.baseline)); p.baselineId = maxId + 1; }
+  p.baselines.forEach(function (b) { if (!b.id) b.id = ++maxId; if (!b.name) b.name = A.L('Baseline', 'Référence'); seen(b); });
+  if (!p.baselines.some(function (b) { return b.id === p.baselineId; })) p.baselineId = p.baselines.length ? p.baselines[p.baselines.length - 1].id : 0;
+  p.baseline = A.activeBaseline(p);
   if (!(p.nextId > maxId)) p.nextId = maxId + 1;
   return p;
 };
+A.activeBaseline = function (p) { p = p || A.P; return (p.baselines || []).find(function (b) { return b.id === p.baselineId; }) || null; };
+/* unit used to display durations: the project setting, or each task's own unit */
+A.dUnit = function (t) { var u = A.P && A.P.durUnit; return u && u !== 'auto' ? u : (t && t.unit) || 'd'; };
+A.catLabel = function (plural) { return plural ? A.L('Budget lines', 'Lignes budgétaires') : A.L('Budget line', 'Ligne budgétaire'); };
 A.newProjectShell = function () { var l = A.lang; var p = A.newProject(''); A.lang = l; return p; };
 
 /* ---------- store: current project, undo, autosave ---------- */
@@ -177,7 +193,9 @@ A.P = null;           // current project
 A.S = null;           // current schedule (computed)
 A.undoStack = []; A.redoStack = [];
 A.onChange = null;    // set by the UI
-A.storageKey = 'project-atlas.current';
+A.storageKey = 'project-atlas.v2.current';
+A.storageKeyV1 = 'project-atlas.current';
+A.APP_VERSION = '2.0';
 
 A.setProject = function (p, keepUndo) {
   A.P = A.normalize(p);

@@ -192,7 +192,7 @@ A.importMSPXML = function (text) {
 A.tableTasks = function () {
   var L = A.L, S = A.S;
   var head = ['#', L('WBS', 'WBS'), L('Name', 'Nom'), L('Level', 'Niveau'), L('Duration (days)', 'Durée (jours)'), L('Start', 'Début'), L('Finish', 'Fin'),
-    L('Predecessors', 'Prédécesseurs'), L('Resources', 'Ressources'), L('Cost', 'Coût'), L('Category', 'Catégorie'), L('Contract', 'Contrat'),
+    L('Predecessors', 'Prédécesseurs'), L('Resources', 'Ressources'), L('Cost', 'Coût'), A.catLabel(), L('Contract', 'Contrat'),
     L('% complete', '% achevé'), L('Total float (days)', 'Marge totale (jours)'), L('Critical', 'Critique'), L('Notes', 'Notes')];
   var rows = A.P.tasks.map(function (t, i) {
     var n = S.info.get(t.id), cat = A.catById(n.cat), c = A.contractById(t.contract || t.proc);
@@ -203,8 +203,8 @@ A.tableTasks = function () {
 };
 A.tableResources = function () {
   var L = A.L;
-  return [[L('Name', 'Nom'), L('Type', 'Type'), L('Group', 'Groupe'), L('Max units %', 'Capacité max %'), L('Rate', 'Taux'), L('Per', 'Par'), L('Cost per use', 'Coût par utilisation'), L('Unit', 'Unité')]]
-    .concat(A.P.resources.map(function (r) { return [r.name, r.type, r.group, r.max, r.rate, r.per, r.perUse, r.unit]; }));
+  return [[L('Name', 'Nom'), L('Type', 'Type'), L('Group', 'Groupe'), L('Accounting category', 'Catégorie comptable'), L('Capacity', 'Capacité'), L('Rate', 'Taux'), L('Per', 'Par'), L('Cost per use', 'Coût par utilisation'), L('Unit', 'Unité')]]
+    .concat(A.P.resources.map(function (r) { return [r.name, r.type, r.group, r.account || '', r.max, r.rate, r.per, r.perUse, r.unit]; }));
 };
 A.tableContracts = function () {
   var L = A.L;
@@ -226,7 +226,7 @@ A.tablePayments = function () {
 A.tableBudget = function () {
   var L = A.L, b = A.budgetMatrix(A.P, A.S), used = b.cats.map(function (c, j) { return c !== 0 || b.m.some(function (r) { return r[j]; }); });
   var head = [L('Component', 'Composante')];
-  b.cats.forEach(function (c, j) { if (used[j]) head.push(c ? A.catById(c).name : L('No category', 'Sans catégorie')); });
+  b.cats.forEach(function (c, j) { if (used[j]) head.push(c ? A.catById(c).name : L('No budget line', 'Sans ligne budgétaire')); });
   head.push(L('Total', 'Total'));
   var rows = [head], tot = b.cats.map(function () { return 0; }), grand = 0;
   b.comps.forEach(function (n, i) {
@@ -244,7 +244,7 @@ A.tableCashflow = function (step, by) {
   if (by === 'component') S.nodes.forEach(function (n) { if (!n.parent) g(n.id, n.wbs + ' ' + n.t.name); });
   else A.P.categories.forEach(function (c) { g(c.id, c.name); });
   ph.forEach(function (r) {
-    var grp = by === 'component' ? g(r.node.comp.id, '') : g(r.node.cat || 0, L('No category', 'Sans catégorie'));
+    var grp = by === 'component' ? g(r.node.comp.id, '') : g(r.node.cat || 0, L('No budget line', 'Sans ligne budgétaire'));
     r.values.forEach(function (v, i) { grp.v[i] += v; });
   });
   groups = groups.filter(function (x) { return x.v.some(function (v) { return v; }) || by === 'component'; });
@@ -254,7 +254,7 @@ A.tableCashflow = function (step, by) {
 };
 A.tableCashflowRows = function (step, by) {
   var L = A.L, cf = A.tableCashflow(step, by), r = function (v) { return Math.round(v); };
-  var rows = [[by === 'component' ? L('Component', 'Composante') : L('Category', 'Catégorie')].concat(cf.periods.map(function (p) { return p.label; })).concat([L('Total', 'Total')])];
+  var rows = [[by === 'component' ? L('Component', 'Composante') : A.catLabel()].concat(cf.periods.map(function (p) { return p.label; })).concat([L('Total', 'Total')])];
   cf.groups.forEach(function (g) { rows.push([g.label].concat(g.v.map(r)).concat([r(g.v.reduce(function (a, b) { return a + b; }, 0))])); });
   rows.push([L('Total', 'Total')].concat(cf.total.map(r)).concat([r(cf.cum[cf.cum.length - 1] || 0)]));
   rows.push([L('Cumulative', 'Cumul')].concat(cf.cum.map(r)).concat(['']));
@@ -272,7 +272,7 @@ A.importTaskRows = function (rows) {
   var H = rows[hi].map(norm);
   function col() { for (var a = 0; a < arguments.length; a++) { var re = arguments[a]; for (var i = 0; i < H.length; i++) if (re.test(H[i])) return i; } return -1; }
   var cName = col(/^(name|nom|task|tache|activity|activite)/), cWbs = col(/^(wbs|otp|sdp|code|outline)/), cLvl = col(/^(level|niveau)/),
-    cDur = col(/^(duration|duree)/), cPred = col(/^pred/), cCost = col(/^(cost|cout|amount|montant|budget)/), cCat = col(/^categ/),
+    cDur = col(/^(duration|duree)/), cPred = col(/^pred/), cCost = col(/^(cost|cout|amount|montant|budget)/), cCat = col(/^categ/, /^(budget ?line|ligne)/),
     cRes = col(/^ress?ource/), cNotes = col(/^note/), cStart = col(/^(start|debut)/), cNum = col(/^(#|id|no\.?|n°|num(ero)?)$/);
   var p = A.P, base = p.tasks.length, made = [], rowToTask = new Map();
   rows.slice(hi + 1).forEach(function (r, k) {
@@ -361,6 +361,15 @@ A.pickFile = function (accept, cb, binary) {
     if (binary) rd.readAsArrayBuffer(f); else rd.readAsText(f);
   };
   inp.click();
+};
+A.exportContractsXLSX = function (list) {
+  var L = A.L, wb = XLSX.utils.book_new(), all = A.P.contracts, keep = new Set(list.map(function (c) { return c.id; }));
+  A.P.contracts = all.filter(function (c) { return keep.has(c.id); });
+  try {
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(A.tableContracts()), L('Contracts', 'Contrats'));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(A.tablePayments()), L('Payments', 'Paiements'));
+  } finally { A.P.contracts = all; }
+  XLSX.writeFile(wb, A.fileName(L(' - contracts.xlsx', ' - contrats.xlsx')));
 };
 A.exportXLSX = function () {
   if (A.blocked()) return;

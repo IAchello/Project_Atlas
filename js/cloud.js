@@ -1,10 +1,12 @@
 /* Project Atlas — online shared projects (Supabase). No accounts: a share link gives read access,
-   the edit code gives the right to save. Saving never overwrites someone else's newer version silently. */
+   the edit code gives the right to save. Several people can work at the same time: changes are
+   sent automatically a moment after they are made, other people's changes are merged in, and only
+   when the same field was changed by two people at once does the later save win for that field. */
 var A = globalThis.A = globalThis.A || {};
 (function () {
-  var h = A.h, L = A.L, cloud = A.cloud = { remote: null, busy: false, lastError: '', own: {} };
+  var h = A.h, L = A.L, cloud = A.cloud = { remote: null, busy: false, lastError: '', own: {}, others: [], base: null, client: null, online: true };
   function ls(key, val) {
-    try { if (val === undefined) return JSON.parse(localStorage.getItem(key) || 'null'); localStorage.setItem(key, JSON.stringify(val)); } catch (e) { return null; }
+    try { if (val === undefined) return JSON.parse(localStorage.getItem(key) || 'null'); if (val === null) localStorage.removeItem(key); else localStorage.setItem(key, JSON.stringify(val)); } catch (e) { return null; }
   }
   cloud.cfg = function () {
     var c = A.cloudConfig || {}, l = ls('project-atlas.cloud') || {};
@@ -15,6 +17,7 @@ var A = globalThis.A = globalThis.A || {};
   cloud.code = function (id) { return (ls('project-atlas.codes') || {})[id] || ''; };
   function setCode(id, code) { var m = ls('project-atlas.codes') || {}; if (code) m[id] = code; else delete m[id]; ls('project-atlas.codes', m); }
   cloud.canEdit = function () { return !!(A.P.shared && cloud.code(A.P.shared.id)); };
+  cloud.clientId = function () { if (!cloud.client) { try { cloud.client = sessionStorage.getItem('project-atlas.client'); } catch (e) { /* none */ } if (!cloud.client) { cloud.client = Math.random().toString(36).slice(2, 10); try { sessionStorage.setItem('project-atlas.client', cloud.client); } catch (e) { /* none */ } } } return cloud.client; };
 
   cloud.rpc = function (fn, args) {
     var c = cloud.cfg(); if (!c) return Promise.reject(new Error(L('Online sharing is not set up.', 'Le partage en ligne n’est pas configuré.')));
@@ -22,12 +25,13 @@ var A = globalThis.A = globalThis.A || {};
       .then(function (r) {
         return r.text().then(function (t) {
           var j = null; try { j = t ? JSON.parse(t) : null; } catch (e) { j = null; }
-          if (!r.ok) throw new Error((j && (j.message || j.hint)) || ('HTTP ' + r.status));
+          if (!r.ok) { var err = new Error((j && (j.message || j.hint)) || ('HTTP ' + r.status)); err.status = r.status; err.code = j && j.code; throw err; }
+          cloud.online = true;
           return j;
         });
-      }, function () { throw new Error(L('The online service cannot be reached. Check the internet connection.', 'Le service en ligne est injoignable. Vérifier la connexion internet.')); });
+      }, function () { cloud.online = false; throw new Error(L('The online service cannot be reached. Check the internet connection.', 'Le service en ligne est injoignable. Vérifier la connexion internet.')); });
   };
-  function payload() { var p = A.clone(A.P); p.shared = { id: A.P.shared ? A.P.shared.id : null }; return p; }
+  function payload(p) { p = A.clone(p || A.P); p.shared = { id: A.P.shared ? A.P.shared.id : null }; return p; }
   function fail(e) { cloud.busy = false; cloud.lastError = String(e.message || e); A.toast(cloud.lastError, 'bad'); A.refresh(); }
   function linkFor(id, code) { return location.href.split('#')[0] + '#p=' + id + (code ? '&k=' + encodeURIComponent(code) : ''); }
   cloud.link = linkFor;
@@ -49,6 +53,59 @@ var A = globalThis.A = globalThis.A || {};
       code ? row(L('Edit code', 'Code de modification'), code, L('Someone who opened the view link can type this code to be allowed to save. Keep it: it cannot be recovered.', 'Une personne ayant ouvert le lien de consultation peut saisir ce code pour pouvoir enregistrer. Le conserver : il ne peut pas être retrouvé.')) : null);
   }
 
+  /* ---- the base copy: what the online version looked like when it was last loaded or saved ---- */
+  function setBase(p, version) { cloud.base = { version: version, data: JSON.stringify(payload(p)) }; ls('project-atlas.v2.base', cloud.base); }
+  function getBase() { if (!cloud.base) cloud.base = ls('project-atlas.v2.base'); return cloud.base; }
+
+  /* ---- three-way merge: base (last common version), local (this screen), remote (the newer online copy) ---- */
+  var SAME = function (a, b) { return JSON.stringify(a) === JSON.stringify(b); };
+  function isObj(v) { return v && typeof v === 'object' && !Array.isArray(v); }
+  function mergeValue(b, l, r) {
+    if (SAME(l, r)) return l;
+    if (SAME(l, b)) return r;       // only the other person changed it
+    if (SAME(r, b)) return l;       // only I changed it
+    if (isObj(b) && isObj(l) && isObj(r)) { // both changed: go one level down (status-date maps, calendars, thresholds)
+      var out = {}, keys = {}; [b, l, r].forEach(function (o) { Object.keys(o).forEach(function (k) { keys[k] = 1; }); });
+      Object.keys(keys).forEach(function (k) { var v = mergeValue(b[k], l[k], r[k]); if (v !== undefined) out[k] = v; });
+      return out;
+    }
+    return l; // same field changed by both: the person saving now wins
+  }
+  /* lists of records with an id: added, removed and changed records from both sides */
+  function mergeList(b, l, r, keyOf) {
+    keyOf = keyOf || function (x) { return x.id; };
+    var bm = new Map(), lm = new Map(), rm = new Map();
+    (b || []).forEach(function (x) { bm.set(keyOf(x), x); }); (l || []).forEach(function (x) { lm.set(keyOf(x), x); }); (r || []).forEach(function (x) { rm.set(keyOf(x), x); });
+    var res = new Map();
+    new Set([].concat(Array.from(bm.keys()), Array.from(lm.keys()), Array.from(rm.keys()))).forEach(function (k) {
+      var bx = bm.get(k), lx = lm.get(k), rx = rm.get(k);
+      if (!bx) { if (lx && rx) res.set(k, mergeValue({}, lx, rx)); else res.set(k, lx || rx); return; }   // added on one side (or both with the same id)
+      if (!lx && !rx) return;                                                                                 // removed by both
+      if (!lx) { if (!SAME(rx, bx)) res.set(k, rx); return; }                                                // I removed it: it stays only if the other person changed it meanwhile
+      if (!rx) { if (!SAME(lx, bx)) res.set(k, lx); return; }                                                // the other person removed it: it stays only if I changed it
+      res.set(k, mergeValue(bx, lx, rx));
+    });
+    /* order: the remote order first, then my records placed after the record that precedes them on my screen */
+    var order = [], placed = new Set();
+    (r || []).forEach(function (x) { var k = keyOf(x); if (res.has(k)) { order.push(k); placed.add(k); } });
+    (l || []).forEach(function (x, i) {
+      var k = keyOf(x); if (!res.has(k) || placed.has(k)) return;
+      var prev = null; for (var j = i - 1; j >= 0; j--) { var pk = keyOf(l[j]); if (placed.has(pk)) { prev = pk; break; } }
+      var at = prev == null ? 0 : order.indexOf(prev) + 1; order.splice(at, 0, k); placed.add(k);
+    });
+    return order.map(function (k) { return res.get(k); });
+  }
+  cloud.merge = function (base, local, remote) {
+    var out = A.clone(remote), lists = { tasks: null, resources: null, contracts: null, categories: null, statuses: null, baselines: null, assignments: function (a) { return a.task + '/' + a.res; } };
+    Object.keys(local).forEach(function (k) {
+      if (k === 'shared' || k === 'nextId') return;
+      if (k in lists) out[k] = mergeList(base[k], local[k], remote[k], lists[k] || undefined);
+      else out[k] = mergeValue(base[k], local[k], remote[k]);
+    });
+    out.nextId = Math.max(local.nextId || 0, remote.nextId || 0);
+    return out;
+  };
+
   /* ---- actions ---- */
   cloud.shareDialog = function () {
     if (!cloud.cfg()) return cloud.needSetup();
@@ -56,14 +113,14 @@ var A = globalThis.A = globalThis.A || {};
     var who = { name: cloud.user() };
     A.dialog({
       title: L('Share this project online', 'Partager ce projet en ligne'),
-      body: h('div.form', h('p', L('The project is copied to the online space. You get a link to view it and a link to edit it. Each person works in their browser and saves online; Atlas warns when someone else has saved in the meantime.',
-        'Le projet est copié dans l’espace en ligne. Vous obtenez un lien de consultation et un lien de modification. Chacun travaille dans son navigateur et enregistre en ligne ; Atlas avertit si quelqu’un d’autre a enregistré entre-temps.')),
-        A.field(L('Your name (shown to the others when you save)', 'Votre nom (affiché aux autres à l’enregistrement)'), A.input(who, 'name', 'text'))),
+      body: h('div.form', h('p', L('The project is copied to the online space. You get a link to view it and a link to edit it. Everyone works in their own browser; changes are sent automatically and merged with the other people’s changes.',
+        'Le projet est copié dans l’espace en ligne. Vous obtenez un lien de consultation et un lien de modification. Chacun travaille dans son navigateur ; les modifications sont envoyées automatiquement et fusionnées avec celles des autres.')),
+        A.field(L('Your name (shown to the others)', 'Votre nom (affiché aux autres)'), A.input(who, 'name', 'text'))),
       buttons: [{ label: L('Cancel', 'Annuler') }, { label: L('Share', 'Partager'), primary: true, onclick: function () {
         ls('project-atlas.user', who.name.trim()); var code = newCode(); cloud.busy = true;
         cloud.rpc('atlas_create', { p_name: A.P.name, p_data: payload(), p_edit_code: code, p_by: cloud.user() }).then(function (r) {
           cloud.busy = false; setCode(r.id, code);
-          A.P.shared = { id: r.id, version: r.version, at: r.updated_at, by: cloud.user(), dirty: false }; A.persist(); cloud.remote = null; A.refresh();
+          A.P.shared = { id: r.id, version: r.version, at: r.updated_at, by: cloud.user(), dirty: false }; setBase(A.P, r.version); A.persist(); cloud.remote = null; A.refresh();
           A.dialog({ title: L('The project is shared', 'Le projet est partagé'), wide: true, body: linksBody(r.id, code) });
         }, fail);
       } }]
@@ -74,7 +131,7 @@ var A = globalThis.A = globalThis.A || {};
     var p = r.data; p.shared = { id: r.id, version: r.version, at: r.updated_at, by: r.updated_by, dirty: false };
     var before = JSON.stringify(A.P), stack = A.undoStack.slice();
     A.setProject(p); if (keepUndo) A.undoStack = stack.concat([before]);
-    cloud.remote = null; A.refresh();
+    setBase(A.P, r.version); cloud.remote = null; A.refresh();
   }
   cloud.open = function (id, code) {
     if (!cloud.cfg()) return cloud.needSetup();
@@ -82,7 +139,7 @@ var A = globalThis.A = globalThis.A || {};
     return cloud.rpc('atlas_get', { p_id: id }).then(function (r) {
       cloud.busy = false;
       if (!r) throw new Error(L('This shared project does not exist (or was deleted).', 'Ce projet partagé n’existe pas (ou a été supprimé).'));
-      var done = function () { adopt(r, true); A.go(r.data.tasks && r.data.tasks.length ? 'gantt' : 'dashboard'); A.toast(L('Shared project opened', 'Projet partagé ouvert') + (cloud.canEdit() ? '' : L(' (view only)', ' (consultation seule)')), 'ok'); };
+      var done = function () { adopt(r, true); A.go(r.data.tasks && r.data.tasks.length ? 'gantt' : 'dashboard'); A.toast(L('Shared project opened', 'Projet partagé ouvert') + (cloud.canEdit() ? '' : L(' (view only)', ' (consultation seule)')), 'ok'); cloud.poll(); };
       if (code) return cloud.rpc('atlas_check', { p_id: id, p_edit_code: code }).then(function (ok) { if (ok) setCode(id, code); done(); });
       done();
     }).catch(fail);
@@ -104,28 +161,61 @@ var A = globalThis.A = globalThis.A || {};
         var code = o.code.trim().toUpperCase();
         cloud.rpc('atlas_check', { p_id: id, p_edit_code: code }).then(function (ok) {
           if (!ok) return A.toast(L('This code is not the edit code of this project.', 'Ce code n’est pas le code de modification de ce projet.'), 'bad');
-          setCode(id, code); A.refresh(); A.toast(L('You can now save this project online.', 'Vous pouvez maintenant enregistrer ce projet en ligne.'), 'ok');
+          setCode(id, code); A.refresh(); A.toast(L('You can now change this project; your changes are sent automatically.', 'Vous pouvez maintenant modifier ce projet ; vos modifications sont envoyées automatiquement.'), 'ok');
         }, fail);
       } }] });
   };
+  function askName(then) {
+    if (cloud.user()) return then();
+    A.promptText(L('Your name (shown to the others)', 'Votre nom (affiché aux autres)'), '', function (n) { if (n) { ls('project-atlas.user', n); then(); } });
+  }
+  /* send my changes. Merges first when somebody else saved since my base copy. */
   cloud.save = function (force) {
     var sh = A.P.shared; if (!sh) return cloud.shareDialog();
     if (!cloud.canEdit()) return cloud.enterCode();
-    if (!cloud.user()) { return A.promptText(L('Your name (shown to the others when you save)', 'Votre nom (affiché aux autres à l’enregistrement)'), '', function (n) { if (n) { ls('project-atlas.user', n); cloud.save(force); } }); }
-    cloud.busy = true; A.refresh();
-    cloud.rpc('atlas_save', { p_id: sh.id, p_edit_code: cloud.code(sh.id), p_data: payload(), p_name: A.P.name, p_expected: sh.version, p_by: cloud.user(), p_force: !!force }).then(function (r) {
+    if (!cloud.user()) return askName(function () { cloud.save(force); });
+    if (cloud.busy) { cloud.again = true; return; }
+    cloud.busy = true; if (A.renderShellOnly) A.renderShellOnly();
+    var expected = sh.version;
+    cloud.rpc('atlas_save', { p_id: sh.id, p_edit_code: cloud.code(sh.id), p_data: payload(), p_name: A.P.name, p_expected: expected, p_by: cloud.user(), p_force: !!force }).then(function (r) {
       cloud.busy = false;
-      if (r.ok) { cloud.own[sh.version] = r.version; sh.version = r.version; sh.at = r.updated_at; sh.by = cloud.user(); sh.dirty = false; cloud.remote = null; A.persist(); A.refresh(); A.toast(L('Saved online (version ', 'Enregistré en ligne (version ') + r.version + ')', 'ok'); return; }
-      if (r.reason === 'conflict') { cloud.remote = { version: r.version, by: r.updated_by, at: r.updated_at }; A.refresh(); return cloud.conflictDialog(); }
+      if (r.ok) {
+        cloud.own[expected] = r.version; sh.version = r.version; sh.at = r.updated_at; sh.by = cloud.user();
+        if (!cloud.editedSince) sh.dirty = false;
+        cloud.editedSince = false; setBase(A.P, r.version); cloud.remote = null; cloud.lastError = ''; A.persist();
+        if (A.renderShellOnly) A.renderShellOnly();
+        if (cloud.again) { cloud.again = false; cloud.schedule(300); }
+        return;
+      }
+      if (r.reason === 'conflict') return cloud.mergeFromRemote(r);
       if (r.reason === 'code') { setCode(sh.id, ''); A.refresh(); return A.toast(L('The edit code is no longer valid.', 'Le code de modification n’est plus valide.'), 'bad'); }
       if (r.reason === 'missing') return A.toast(L('This shared project was deleted online. Your copy is still here.', 'Ce projet partagé a été supprimé en ligne. Votre copie est toujours ici.'), 'bad');
       A.toast(L('The project is too large to be saved online.', 'Le projet est trop volumineux pour être enregistré en ligne.'), 'bad'); A.refresh();
+    }, function (e) { cloud.busy = false; cloud.lastError = String(e.message || e); if (A.renderShellOnly) A.renderShellOnly(); });
+  };
+  /* somebody saved before me: merge their version with mine, then save again */
+  cloud.mergeFromRemote = function (head) {
+    var sh = A.P.shared, base = getBase();
+    cloud.remote = { version: head.version, by: head.updated_by, at: head.updated_at };
+    if (!base || base.version !== sh.version) { A.refresh(); return cloud.conflictDialog(); } // nothing to merge from: the person decides
+    cloud.busy = true;
+    return cloud.rpc('atlas_get', { p_id: sh.id }).then(function (r) {
+      cloud.busy = false;
+      if (!r) throw new Error(L('This shared project was deleted online.', 'Ce projet partagé a été supprimé en ligne.'));
+      if (!A.P.shared || A.P.shared.id !== sh.id) return;
+      var merged = cloud.merge(JSON.parse(base.data), payload(), payload(r.data));
+      merged.shared = { id: sh.id, version: r.version, at: r.updated_at, by: r.updated_by, dirty: true };
+      var focus = A.captureFocus(), before = JSON.stringify(A.P), stack = A.undoStack.slice();
+      A.setProject(merged); A.undoStack = stack.concat([before]); A.restoreFocus(focus);
+      setBase(r.data, r.version); cloud.remote = null; cloud.editedSince = false;
+      A.toast((r.updated_by || L('Someone', 'Quelqu’un')) + L('’s changes were merged with yours.', ' : ses modifications ont été fusionnées avec les vôtres.'), 'ok');
+      cloud.save();
     }, fail);
   };
   cloud.conflictDialog = function () {
     var r = cloud.remote || {};
     A.dialog({ title: L('Someone else saved a newer version', 'Quelqu’un d’autre a enregistré une version plus récente'),
-      body: h('div', h('p', (r.by || L('Another person', 'Une autre personne')) + L(' saved version ', ' a enregistré la version ') + r.version + L(' while you were working. Your changes are not online yet.', ' pendant que vous travailliez. Vos modifications ne sont pas encore en ligne.')),
+      body: h('div', h('p', (r.by || L('Another person', 'Une autre personne')) + L(' saved version ', ' a enregistré la version ') + r.version + L(' and Atlas cannot merge it automatically with your changes (the common starting point is missing). Your changes are not online yet.', ' et Atlas ne peut pas la fusionner automatiquement avec vos modifications (le point de départ commun manque). Vos modifications ne sont pas encore en ligne.')),
         h('p.muted', L('Tip: “Save my copy to a file” first if you want to compare the two versions at leisure.', 'Astuce : « Enregistrer ma copie dans un fichier » d’abord pour comparer les deux versions à tête reposée.'))),
       buttons: [{ label: L('Decide later', 'Décider plus tard') }, { label: L('Save my copy to a file', 'Enregistrer ma copie dans un fichier'), onclick: function () { A.fileSave(); return false; } },
         { label: L('Load their version', 'Charger leur version'), onclick: function () { cloud.reload(); } },
@@ -137,46 +227,69 @@ var A = globalThis.A = globalThis.A || {};
   };
   cloud.detach = function () {
     A.confirm(L('Keep this project as a local copy only? It stays online for the others; you can reopen it with its link.', 'Conserver ce projet comme simple copie locale ? Il reste en ligne pour les autres ; vous pourrez le rouvrir avec son lien.'), L('Detach', 'Détacher'),
-      function () { A.P.shared = null; cloud.remote = null; A.persist(); A.refresh(); });
+      function () { A.P.shared = null; cloud.remote = null; cloud.others = []; A.persist(); A.refresh(); });
   };
   cloud.remove = function () {
     var sh = A.P.shared;
     A.confirm(L('Delete the online copy for everyone? This cannot be undone. Your local copy is kept.', 'Supprimer la copie en ligne pour tout le monde ? Cette action est irréversible. Votre copie locale est conservée.'), L('Delete online', 'Supprimer en ligne'), function () {
       cloud.rpc('atlas_delete', { p_id: sh.id, p_edit_code: cloud.code(sh.id) }).then(function (ok) {
         if (!ok) return A.toast(L('The online copy could not be deleted.', 'La copie en ligne n’a pas pu être supprimée.'), 'bad');
-        setCode(sh.id, ''); A.P.shared = null; cloud.remote = null; A.persist(); A.refresh(); A.toast(L('Online copy deleted.', 'Copie en ligne supprimée.'), 'ok');
+        setCode(sh.id, ''); A.P.shared = null; cloud.remote = null; cloud.others = []; A.persist(); A.refresh(); A.toast(L('Online copy deleted.', 'Copie en ligne supprimée.'), 'ok');
       }, fail);
     });
   };
-  /* notice other people's saves */
+
+  /* ---- keeping in step: every few seconds, tell the others I am here and look for their saves ---- */
+  var typingSince = 0;
+  function typing() {
+    var el = document.activeElement, tag = (el && el.tagName || '').toLowerCase();
+    var busyInput = (tag === 'input' && el.type !== 'checkbox' && el.type !== 'date') || tag === 'textarea' || !!document.querySelector('dialog[open]') || !!document.querySelector('.respick');
+    if (!busyInput) { typingSince = 0; return false; }
+    if (!typingSince) typingSince = Date.now();
+    return Date.now() - typingSince < 20000; // after 20 s the other changes come in anyway
+  }
   cloud.poll = function () {
     var sh = A.P && A.P.shared; if (!sh || !cloud.cfg() || cloud.busy || document.hidden) return;
-    cloud.rpc('atlas_head', { p_id: sh.id }).then(function (r) {
-      if (!r || !A.P.shared || A.P.shared.id !== sh.id) return;
+    var pid = sh.id;
+    var p = cloud.pingOk === false ? cloud.rpc('atlas_head', { p_id: pid }) : cloud.rpc('atlas_ping', { p_id: pid, p_client: cloud.clientId(), p_by: cloud.user() || L('Guest', 'Invité') }).catch(function (e) {
+      if (e.status === 404 || /atlas_ping|function/i.test(e.message)) { cloud.pingOk = false; return cloud.rpc('atlas_head', { p_id: pid }); } throw e;
+    });
+    p.then(function (r) {
+      if (!r || !A.P.shared || A.P.shared.id !== pid) return;
       cloud.lastError = '';
-      if (r.version > sh.version) {
-        var typing = /^(input|textarea|select)$/i.test((document.activeElement || {}).tagName || '') || document.querySelector('dialog[open]');
-        if (!sh.dirty && !typing) return cloud.reloadQuiet(r);
-        if (!cloud.remote || cloud.remote.version !== r.version) { cloud.remote = { version: r.version, by: r.updated_by, at: r.updated_at }; A.refresh(); }
-      }
-    }, function (e) { cloud.lastError = String(e.message || e); });
+      var others = r.others || [], changed = JSON.stringify(others) !== JSON.stringify(cloud.others); cloud.others = others;
+      if (r.version > A.P.shared.version) {
+        if (!A.P.shared.dirty) { if (!typing()) return cloud.reloadQuiet(r); }
+        else if (cloud.canEdit()) { if (!typing()) return cloud.mergeFromRemote(r); }
+        if (!cloud.remote || cloud.remote.version !== r.version) { cloud.remote = { version: r.version, by: r.updated_by, at: r.updated_at }; A.refresh(); return; }
+      } else if (A.P.shared.dirty && cloud.canEdit() && !cloud.busy && !typing()) return cloud.save();
+      if (changed && A.renderShellOnly) A.renderShellOnly();
+    }, function (e) { cloud.lastError = String(e.message || e); if (A.renderShellOnly) A.renderShellOnly(); });
   };
   cloud.reloadQuiet = function (head) {
-    var id = A.P.shared.id;
+    var id = A.P.shared.id; cloud.busy = true;
     cloud.rpc('atlas_get', { p_id: id }).then(function (r) {
+      cloud.busy = false;
       if (!r || !A.P.shared || A.P.shared.id !== id || A.P.shared.dirty) return;
-      adopt(r, true); A.toast((r.updated_by || L('Someone', 'Quelqu’un')) + L(' saved version ', ' a enregistré la version ') + r.version + L(': it is now on your screen.', ' : elle est maintenant à l’écran.'), 'ok');
-    }, function () { /* next poll retries */ });
+      var focus = A.captureFocus(); adopt(r, true); A.restoreFocus(focus);
+      A.toast((r.updated_by || L('Someone', 'Quelqu’un')) + L(' made changes: they are now on your screen.', ' a fait des modifications : elles sont maintenant à l’écran.'), 'ok');
+    }, function () { cloud.busy = false; });
+  };
+  /* my changes go online about two seconds after the last one */
+  cloud.schedule = function (ms) {
+    clearTimeout(cloud.timer);
+    cloud.timer = setTimeout(function () { if (A.P.shared && A.P.shared.dirty && cloud.canEdit() && !typing()) cloud.save(); else if (A.P.shared && A.P.shared.dirty && cloud.canEdit()) cloud.schedule(1500); }, ms || 2000);
   };
 
   /* mark local changes */
   ['edit', 'undo', 'redo'].forEach(function (name) {
     var orig = A[name];
     A[name] = function () {
-      var before = A.P && A.P.shared ? JSON.stringify(A.P.shared) : null, res = orig.apply(A, arguments);
+      var res = orig.apply(A, arguments);
       if (A.P && A.P.shared && res !== false) {
         if (name !== 'edit') { var v = A.P.shared.version; while (cloud.own[v] && cloud.own[v] > v) v = cloud.own[v]; A.P.shared.version = v; } // my own later saves still count as my base
-        if (!A.P.shared.dirty) { A.P.shared.dirty = true; A.persist(); if (A.renderShellOnly) A.renderShellOnly(); }
+        A.P.shared.dirty = true; if (cloud.busy) cloud.editedSince = true; A.persist(); if (A.renderShellOnly) A.renderShellOnly();
+        if (cloud.canEdit()) cloud.schedule();
       }
       return res;
     };
@@ -186,12 +299,12 @@ var A = globalThis.A = globalThis.A || {};
   cloud.menuItems = function () {
     var sh = A.P.shared, items = [];
     if (!cloud.cfg()) return [[L('Set up online sharing…', 'Configurer le partage en ligne…'), cloud.needSetup, L('needs a free Supabase project', 'nécessite un projet Supabase gratuit')]];
-    if (!sh) items.push([L('Share this project online…', 'Partager ce projet en ligne…'), cloud.shareDialog, L('get a link to view and a link to edit', 'obtenir un lien de consultation et un lien de modification')]);
+    if (!sh) items.push([L('Share this project online…', 'Partager ce projet en ligne…'), cloud.shareDialog, L('work on it with others at the same time', 'y travailler à plusieurs en même temps')]);
     else {
-      items.push([L('Save online', 'Enregistrer en ligne'), function () { cloud.save(); }, cloud.canEdit() ? (sh.dirty ? L('you have changes not yet online', 'des modifications ne sont pas encore en ligne') : L('version ', 'version ') + sh.version + L(' is online', ' est en ligne')) : L('view only: needs the edit code', 'consultation seule : nécessite le code de modification')]);
+      items.push([L('Send my changes now', 'Envoyer mes modifications maintenant'), function () { cloud.save(); }, cloud.canEdit() ? (sh.dirty ? L('they are sent automatically a moment after each change', 'elles sont envoyées automatiquement un instant après chaque changement') : L('everything is online (version ', 'tout est en ligne (version ') + sh.version + ')') : L('view only: needs the edit code', 'consultation seule : nécessite le code de modification')]);
       items.push([L('Share links…', 'Liens de partage…'), cloud.shareDialog]);
       if (!cloud.canEdit()) items.push([L('Enter the edit code…', 'Saisir le code de modification…'), cloud.enterCode]);
-      items.push([L('Load the online version', 'Charger la version en ligne'), cloud.reload, L('replaces what is on screen (Undo brings it back)', 'remplace ce qui est à l’écran (Annuler le rétablit)')]);
+      items.push([L('Reload the online version', 'Recharger la version en ligne'), cloud.reload, L('replaces what is on screen (Undo brings it back)', 'remplace ce qui est à l’écran (Annuler le rétablit)')]);
       items.push(null);
       items.push([L('Detach: keep a local copy only', 'Détacher : ne garder qu’une copie locale'), cloud.detach]);
       if (cloud.canEdit()) items.push([L('Delete the online copy…', 'Supprimer la copie en ligne…'), cloud.remove]);
@@ -201,9 +314,17 @@ var A = globalThis.A = globalThis.A || {};
   };
   cloud.statusText = function () {
     var sh = A.P.shared; if (!sh) return L('Share', 'Partager');
-    if (cloud.busy) return L('Saving…', 'Enregistrement…');
+    if (cloud.lastError && !cloud.online) return L('Online · no connection', 'En ligne · pas de connexion');
+    if (cloud.busy) return L('Online · sending…', 'En ligne · envoi…');
     if (!cloud.canEdit()) return L('Online · view only', 'En ligne · consultation');
-    return sh.dirty ? L('Online · not saved', 'En ligne · non enregistré') : L('Online · v', 'En ligne · v') + sh.version;
+    return sh.dirty ? L('Online · changes pending', 'En ligne · envoi en attente') : L('Online · up to date', 'En ligne · à jour');
+  };
+  cloud.presence = function () {
+    if (!A.P.shared || !cloud.others.length) return null;
+    return h('div.presence', { title: L('Also here right now', 'Également présents en ce moment') }, cloud.others.slice(0, 6).map(function (o) {
+      var name = o.name || L('Guest', 'Invité'), hue = 0; for (var i = 0; i < name.length; i++) hue = (hue * 31 + name.charCodeAt(i)) % 360;
+      return h('span.av', { style: { background: 'hsl(' + hue + ' 55% 45%)' }, title: name }, name.trim().split(/\s+/).map(function (w) { return w[0]; }).join('').slice(0, 2).toUpperCase());
+    }), cloud.others.length > 6 ? h('span.more', '+' + (cloud.others.length - 6)) : null);
   };
   cloud.banner = function () {
     var sh = A.P.shared, r = cloud.remote; if (!sh || !r || r.version <= sh.version) return null;
@@ -240,8 +361,10 @@ var A = globalThis.A = globalThis.A || {};
   cloud.start = function () {
     cloud.fromAddress();
     window.addEventListener('hashchange', cloud.fromAddress);
-    setInterval(cloud.poll, 20000);
+    setInterval(cloud.poll, 5000);
     window.addEventListener('focus', cloud.poll);
-    setTimeout(cloud.poll, 1500);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) cloud.poll(); });
+    window.addEventListener('beforeunload', function () { if (A.P.shared && A.P.shared.dirty && cloud.canEdit() && cloud.cfg() && navigator.sendBeacon) { /* last chance: a plain save */ cloud.save(); } });
+    setTimeout(cloud.poll, 1000);
   };
 })();

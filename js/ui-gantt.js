@@ -95,8 +95,8 @@ var A = globalThis.A = globalThis.A || {};
     /* bars */
     o.rows.forEach(function (n, i) {
       var t = n.t, y = i * rh, a = X(n.x0), b = X(n.x1), bw = Math.max(b - a, 2), mid = y + rh / 2;
-      var crit = o.crit && n.crit && !n.summary, bl = o.base && A.P.baseline && A.P.baseline.tasks[n.id];
-      var tip = '<title>' + A.esc(n.wbs + ' ' + t.name + '\n' + A.fmtDate(n.start) + ' → ' + A.fmtDate(n.finish) + (n.isMs ? '' : '  (' + A.fmtDur(n.dur, t.unit) + ')') +
+      var crit = o.crit && n.crit && !n.summary, bl = o.base && A.baselineUsed && A.baselineUsed.tasks[n.id];
+      var tip = '<title>' + A.esc(n.wbs + ' ' + t.name + '\n' + A.fmtDate(n.start) + ' → ' + A.fmtDate(n.finish) + (n.isMs ? '' : '  (' + A.fmtDurT(n.dur, t) + ')') +
         (n.summary || n.isLoe ? '' : '\n' + L('Total float: ', 'Marge totale : ') + A.fmtDur(n.TF, 'd')) + (n.cost ? '\n' + L('Cost: ', 'Coût : ') + A.money(n.cost) + ' ' + A.P.currency : '')) + '</title>';
       s += '<g class="bar" data-id="' + n.id + '">' + tip;
       if (bl && !n.summary) {
@@ -135,11 +135,26 @@ var A = globalThis.A = globalThis.A || {};
     else d0 = A.monthStart(d0);
     return { d0: d0, d1: d1 };
   }
+  A.filterNames = function () {
+    return [['all', L('All tasks', 'Toutes les tâches')], ['crit', L('Critical tasks', 'Tâches critiques')], ['ms', L('Milestones', 'Jalons')], ['incomplete', L('Not finished', 'Non terminées')],
+      ['late', L('Late tasks', 'Tâches en retard')], ['contract', L('Under a contract', 'Sous contrat')], ['proc', L('Procurement steps', 'Étapes de passation')], ['summary', L('Summary tasks only', 'Récapitulatives seulement')]];
+  };
+  function keepSet() {
+    var f = A.ui.filter || 'all'; if (f === 'all') return null;
+    var keep = new Set(), today = A.toDay(A.P.statusDate) || A.toDay(A.todayISO());
+    A.S.nodes.forEach(function (n) {
+      var ok = f === 'crit' ? (n.crit && !n.summary) : f === 'ms' ? n.isMs : f === 'incomplete' ? (!n.summary && n.pct < 100) : f === 'late' ? (!n.summary && !n.isLoe && n.pct < 100 && n.finish < today)
+        : f === 'contract' ? !!n.t.contract : f === 'proc' ? !!n.t.proc : f === 'summary' ? n.summary : true;
+      if (ok) for (var a = n; a; a = a.parent) keep.add(a.id);
+    });
+    return keep;
+  }
   function visibleRows() {
-    var out = [], hideBelow = null;
+    var out = [], hideBelow = null, keep = keepSet();
     A.P.tasks.forEach(function (t) {
       if (hideBelow != null && t.level > hideBelow) return;
       hideBelow = null;
+      if (keep && !keep.has(t.id)) return;
       out.push(A.S.info.get(t.id));
       if (t.collapsed && A.S.info.get(t.id).summary) hideBelow = t.level;
     });
@@ -164,7 +179,7 @@ var A = globalThis.A = globalThis.A || {};
     rows.forEach(function (n, i) {
       var y = head + i * rh, t = n.t, cx = 0, name = t.name, max = Math.max(12, 44 - t.level * 2);
       if (name.length > max) name = name.slice(0, max - 1) + '…';
-      var cells = [n.wbs, name, n.isMs ? '' : A.fmtDur(n.dur, t.unit), A.fmtDate(n.start), A.fmtDate(n.finish)];
+      var cells = [n.wbs, name, n.isMs ? '' : A.fmtDurT(n.dur, t), A.fmtDate(n.start), A.fmtDate(n.finish)];
       if (i % 2) s += '<rect x="0" y="' + y + '" width="' + left + '" height="' + rh + '" fill="' + C('stripe') + '"/>';
       cells.forEach(function (c, k) {
         s += '<text x="' + (cx + 5 + (k === 1 ? t.level * 8 : 0)) + '" y="' + (y + 14) + '" class="gp-c' + (n.summary ? ' b' : '') + '">' + A.esc(c) + '</text>'; cx += colW[k];
@@ -189,7 +204,7 @@ var A = globalThis.A = globalThis.A || {};
       { k: 'res', w: 150, label: L('Resources', 'Ressources'), edit: 'text' },
       { k: 'cost', w: 108, label: L('Cost', 'Coût') + ' (' + A.P.currency + ')', edit: 'text', cls: 'r' },
       { k: 'pct', w: 56, label: '%', edit: 'text', cls: 'r' },
-      { k: 'cat', w: 150, label: L('Category', 'Catégorie'), edit: 'select' },
+      { k: 'cat', w: 150, label: A.catLabel(), edit: 'select' },
       { k: 'tf', w: 70, label: L('Float', 'Marge'), cls: 'r' }
     ];
   }
@@ -199,7 +214,7 @@ var A = globalThis.A = globalThis.A || {};
       case 'n': return String(i + 1);
       case 'wbs': return n.wbs;
       case 'name': return t.name;
-      case 'dur': return n.isMs ? A.fmtDur(0, t.unit) : A.fmtDur(n.dur, t.unit);
+      case 'dur': return n.isMs ? A.fmtDur(0, A.dUnit(t)) : A.fmtDurT(n.dur, t);
       case 'start': return A.fmtDate(n.start);
       case 'finish': return A.fmtDate(n.finish);
       case 'preds': return A.fmtPreds(t);
@@ -216,14 +231,13 @@ var A = globalThis.A = globalThis.A || {};
     if (k === 'start') return !n.summary && !n.isLoe;
     if (k === 'cost') return !n.summary;
     if (k === 'pct') return !n.summary;
-    if (k === 'res') return !n.summary;
     return true;
   }
   /* apply a typed value to a task; returns an error message or nothing. Runs inside A.edit. */
   function applyCell(t, k, v) {
     var n = A.S.info.get(t.id);
     if (k === 'name') { if (v.trim()) t.name = v.trim(); }
-    else if (k === 'dur') { var d = A.parseDur(v, t.unit); if (!d) return L('Type a duration such as 5d, 2w or 3mo', 'Saisir une durée comme 5j, 2s ou 3mois'); t.dur = Math.abs(d.dur); t.unit = d.unit; t.ms = t.dur === 0; }
+    else if (k === 'dur') { var d = A.parseDur(v, A.dUnit(t)); if (!d) return L('Type a duration such as 5d, 2w or 3mo', 'Saisir une durée comme 5j, 2s ou 3mois'); t.dur = Math.abs(d.dur); t.unit = d.unit; t.ms = t.dur === 0; }
     else if (k === 'start') { if (v) { t.ctype = 'SNET'; t.cdate = v; } else { t.ctype = 'ASAP'; t.cdate = ''; } }
     else if (k === 'preds') {
       var pr; try { pr = A.parsePreds(v, t.id); } catch (e) { return String(e); }
@@ -292,6 +306,13 @@ var A = globalThis.A = globalThis.A || {};
     for (var lv = 1; lv <= maxLevel; lv++) levelSel.appendChild(h('option', { value: lv }, L('Level ', 'Niveau ') + lv));
     var zoomSel = h('select.in.sm', { title: L('Time scale', 'Échelle de temps'), onchange: function () { ui.zoom = zoomSel.value; A.refresh(); } },
       ZOOMS.map(function (q) { return h('option', { value: q.id, selected: q.id === z.id }, A.zoomName(q.id)); }));
+    var filterSel = h('select.in.sm' + (ui.filter !== 'all' ? '.active' : ''), { title: L('Filter the task list', 'Filtrer la liste des tâches'), onchange: function () { ui.filter = filterSel.value; A.refresh(); } },
+      A.filterNames().map(function (f) { return h('option', { value: f[0], selected: ui.filter === f[0] }, (f[0] === 'all' ? '' : L('Filter: ', 'Filtre : ')) + f[1]); }));
+    var bls = A.P.baselines || [];
+    var baseSel = h('select.in.sm', { title: L('Baseline in use (shown in the Gantt and used for earned value)', 'Référence utilisée (affichée dans le Gantt et utilisée pour la valeur acquise)'), disabled: !bls.length,
+      onchange: function () { A.edit(function () { A.useBaseline(+baseSel.value); }); } },
+      bls.length ? bls.map(function (b) { return h('option', { value: b.id, selected: b.id === A.P.baselineId }, b.name + ' · ' + A.fmtDate(b.date)); }) : h('option', L('No baseline', 'Aucune référence')));
+    A.baselineUsed = A.P.baseline;
     var tb = h('div.toolbar',
       h('div.tg', A.btn('plus', L('Task', 'Tâche'), function () { act.add(false); }, { primary: true, title: L('Add a task below the selection (Insert adds above)', 'Ajouter une tâche sous la sélection (Inser ajoute au-dessus)') }),
         A.btn('diamond', L('Milestone', 'Jalon'), function () { act.add(true); }),
@@ -302,14 +323,16 @@ var A = globalThis.A = globalThis.A || {};
         A.btn('down', L('Move down', 'Descendre'), function () { act.move(1); }, { iconOnly: true })),
       h('div.tg', A.btn('link', L('Link', 'Lier'), act.link, { title: L('Link the selected tasks finish-to-start', 'Lier les tâches sélectionnées (fin-début)') }),
         A.btn('unlink', L('Unlink', 'Délier'), act.unlink, { iconOnly: true }),
-        A.btn('info', L('Details', 'Détails'), act.info, { title: L('Task details (double-click a bar)', 'Détails de la tâche (double-clic sur une barre)') })),
+        A.btn('info', L('Details', 'Détails'), act.info, { title: L('Task details (or click a bar)', 'Détails de la tâche (ou cliquer sur une barre)') })),
       h('div.tg', levelSel, zoomSel, A.btn('zoomout', L('Zoom out', 'Zoom arrière'), function () { act.zoom(-1); }, { iconOnly: true }), A.btn('zoomin', L('Zoom in', 'Zoom avant'), function () { act.zoom(1); }, { iconOnly: true })),
       h('div.tg', h('label.chk', h('input', { type: 'checkbox', checked: ui.showCrit, onchange: function (e) { ui.showCrit = e.target.checked; A.refresh(); } }), L('Critical path', 'Chemin critique')),
-        h('label.chk', h('input', { type: 'checkbox', checked: ui.showBase, onchange: function (e) { ui.showBase = e.target.checked; A.refresh(); } }), L('Baseline', 'Référence')),
-        A.btn('flag', L('Set baseline', 'Fixer la référence'), function () {
-          var go = function () { A.edit(function () { A.setBaseline(); }); A.ui.showBase = true; A.refresh(); A.toast(L('Baseline saved.', 'Planification de référence enregistrée.'), 'ok'); };
-          if (A.P.baseline) A.confirm(L('Replace the baseline saved on ', 'Remplacer la référence enregistrée le ') + A.fmtDate(A.P.baseline.date) + L('?', ' ?'), L('Replace', 'Remplacer'), go); else go();
-        }))
+        filterSel),
+      h('div.tg', h('label.chk', h('input', { type: 'checkbox', checked: ui.showBase, onchange: function (e) { ui.showBase = e.target.checked; A.refresh(); } }), L('Baseline', 'Référence')),
+        baseSel, A.btn('flag', L('Set baseline…', 'Fixer la référence…'), A.baselineDialog, { title: L('Save the current schedule as a baseline (up to 10)', 'Enregistrer le planning actuel comme référence (jusqu’à 10)') }),
+        A.P.baseline ? A.btn('undo', L('Clear baseline', 'Effacer la référence'), function () {
+          var b = A.P.baseline;
+          A.confirm(L('Clear the baseline “', 'Effacer la référence « ') + b.name + L('” (saved on ', ' » (enregistrée le ') + A.fmtDate(b.date) + L(')? The previous baseline, if any, is used again.', ') ? La référence précédente, s’il y en a une, est réutilisée.'), L('Clear', 'Effacer'), function () { A.edit(function () { A.clearBaseline(); }); });
+        }, { iconOnly: true }) : null)
     );
     root.appendChild(tb);
     if (S.cycle) root.appendChild(h('div.banner.bad', A.icon('warn'), L('Some tasks depend on each other in a loop. Remove one of the links between the highlighted tasks.', "Des tâches dépendent les unes des autres en boucle. Supprimer l'un des liens entre les tâches signalées.")));
@@ -359,8 +382,8 @@ var A = globalThis.A = globalThis.A || {};
       h('span', h('i.sw', { style: { background: C('summary') } }), L('Summary', 'Récapitulative')), h('span', h('i.sw', { style: { background: C('proc') } }), L('Procurement', 'Passation de marché')),
       h('span', h('i.sw', { style: { background: C('loe') } }), L('Whole-project task', 'Tâche sur tout le projet')), h('span', h('i.sw.dia', { style: { background: C('milestone') } }), L('Milestone', 'Jalon')),
       ui.showBase && A.P.baseline ? h('span', h('i.sw.thin', { style: { background: C('base') } }), L('Baseline of ', 'Référence du ') + A.fmtDate(A.P.baseline.date)) : null,
-      h('span.sp'), h('span.muted', L('Double-click a cell to edit · drag a bar to move it, its right edge to resize · durations: 5d, 2w, 3mo · predecessors: 3; 5SS+2w',
-        'Double-clic sur une cellule pour modifier · glisser une barre pour la déplacer, son bord droit pour la redimensionner · durées : 5j, 2s, 3mois · prédécesseurs : 3; 5DD+2s'))));
+      h('span.sp'), h('span.muted', L('Click a bar or a row number for the details · double-click a cell to edit · drag a bar to move it, its right edge to resize · durations: 5d, 2w, 3mo · predecessors: 3; 5SS+2w',
+        'Cliquer sur une barre ou un numéro de ligne pour les détails · double-clic sur une cellule pour modifier · glisser une barre pour la déplacer, son bord droit pour la redimensionner · durées : 5j, 2s, 3mois · prédécesseurs : 3; 5DD+2s'))));
 
     /* scroll sync + restore */
     gridPane.scrollTop = scroll.top; chartPane.scrollTop = scroll.top; chartPane.scrollLeft = scroll.left; gridPane.scrollLeft = scroll.gleft;
@@ -378,6 +401,7 @@ var A = globalThis.A = globalThis.A || {};
       var tr = td.parentNode, id = +tr.dataset.id, k = td.dataset.k, col = cols.find(function (c) { return c.k === k; }), n = S.info.get(id);
       if (!col || !col.edit || !n || !canEdit(n, k) || td.querySelector('.cell-in')) return;
       var t = n.t, inp, done = false;
+      if (k === 'res') { select(id, null); paintSel(); A.resourcePicker(td, id); return; }
       if (col.edit === 'select') {
         inp = h('select.cell-in', h('option', { value: 0 }, n.parent && n.parent.cat ? L('(inherited)', '(héritée)') : '—'), A.P.categories.map(function (c) { return h('option', { value: c.id, selected: t.cat === c.id }, c.name); }));
       } else if (col.edit === 'date') {
@@ -414,6 +438,7 @@ var A = globalThis.A = globalThis.A || {};
     tbody.addEventListener('click', function (e) {
       var tr = e.target.closest('tr[data-id]'); if (!tr || e.target.closest('.cell-in') || e.target.closest('.tog')) return;
       var id = +tr.dataset.id, td = e.target.closest('td');
+      if (td && td.dataset.k === 'n') { select(id, e); paintSel(); A.taskDialog(id); return; }
       var again = ui.sel.size === 1 && ui.sel.has(id) && !e.shiftKey && !e.ctrlKey && !e.metaKey && ui.lastCell === (id + ':' + (td && td.dataset.k));
       ui.lastCell = id + ':' + (td && td.dataset.k);
       if (again && td) { startEdit(td); return; }
@@ -437,13 +462,14 @@ var A = globalThis.A = globalThis.A || {};
     var svg = chartPane.querySelector('.gantt-body');
     svg.addEventListener('pointerdown', function (e) {
       var g = e.target.closest('.bar'); if (!g || e.button !== 0) return;
-      var id = +g.dataset.id, n = S.info.get(id), now = Date.now();
-      if (ui.lastBar && ui.lastBar.id === id && now - ui.lastBar.t < 450) { ui.lastBar = null; A.taskDialog(id); return; }
-      ui.lastBar = { id: id, t: now };
+      var id = +g.dataset.id, n = S.info.get(id);
       if (!ui.sel.has(id) || ui.sel.size > 1 || e.shiftKey || e.ctrlKey) { select(id, e); paintSel(); }
-      if (n.summary || n.isLoe) return;
       var grip = e.target.classList.contains('grip'), rect = g.querySelector('.b'), x0 = e.clientX, moved = false, dd = 0;
-      if (!rect && !n.isMs) return;
+      if (n.summary || n.isLoe || (!rect && !n.isMs)) { // a click on these opens the details
+        svg.setPointerCapture(e.pointerId);
+        svg.onpointerup = function (ev) { svg.onpointerup = null; if (Math.abs(ev.clientX - x0) < 5 && !e.shiftKey && !e.ctrlKey) A.taskDialog(id); };
+        return;
+      }
       svg.setPointerCapture(e.pointerId);
       var ox = rect ? +rect.getAttribute('x') : 0, ow = rect ? +rect.getAttribute('width') : 0;
       svg.onpointermove = function (ev) {
@@ -455,7 +481,8 @@ var A = globalThis.A = globalThis.A || {};
       };
       svg.onpointerup = function () {
         svg.onpointermove = svg.onpointerup = null; svg.style.cursor = '';
-        if (!moved || !dd) { if (moved) A.refresh(); return; }
+        if (!moved) { if (!e.shiftKey && !e.ctrlKey && !e.metaKey) A.taskDialog(id); return; }
+        if (!dd) { A.refresh(); return; }
         A.edit(function () {
           var t = A.taskById(id);
           if (grip) { var nd = S.cal.endIdx(n.finish + dd) - n.ES; t.dur = Math.max(1, nd); t.ms = false; }
@@ -541,8 +568,8 @@ var A = globalThis.A = globalThis.A || {};
       F(L('Fixed cost', 'Coût fixe') + ' (' + A.P.currency + ')', I(d, 'fixed', 'num')),
       sum ? h('div') : F(L('Cost per month', 'Coût par mois') + ' (' + A.P.currency + ')', I(d, 'rate', 'num'), L('× duration, e.g. unit running costs', "× durée, p. ex. fonctionnement d'une unité")),
       F(L('Spending pattern', 'Rythme de dépense'), I(d, 'accrual', 'select', { options: [{ id: 'prorated', name: L('Spread over the task', 'Réparti sur la tâche') }, { id: 'start', name: L('At the start', 'Au début') }, { id: 'end', name: L('At the end', 'À la fin') }] }))));
-    body.appendChild(h('div.cols3', F(L('Expense category', 'Catégorie de dépense'), I(d, 'cat', 'select', { options: catOpts })), F(L('Contract', 'Contrat'), I(d, 'contract', 'select', { options: conOpts })), h('div')));
-    if (!sum) { body.appendChild(h('h3', L('Resources', 'Ressources'))); body.appendChild(resBox); }
+    body.appendChild(h('div.cols3', F(A.catLabel(), I(d, 'cat', 'select', { options: catOpts })), F(L('Contract', 'Contrat'), I(d, 'contract', 'select', { options: conOpts })), h('div')));
+    body.appendChild(h('h3', L('Resources', 'Ressources'))); body.appendChild(resBox);
     body.appendChild(F(L('Notes', 'Notes'), I(d, 'notes', 'area'), null, 'full'));
     drawPreds(); drawRes();
     A.dialog({
@@ -562,5 +589,67 @@ var A = globalThis.A = globalThis.A || {};
         }
       }]
     });
+  };
+
+  /* ---------- baselines ---------- */
+  A.baselineDialog = function () {
+    var bls = A.P.baselines || [], d = { name: L('Baseline ', 'Référence ') + (bls.length + 1) };
+    if (bls.length >= A.MAX_BASELINES) return A.toast(L('Ten baselines are already saved. Clear one first.', 'Dix références sont déjà enregistrées. En effacer une d’abord.'), 'bad');
+    var list = bls.length ? h('ul.tasklist', bls.map(function (b) { return h('li', b.name + ' · ' + A.fmtDate(b.date) + (b.id === A.P.baselineId ? L(' (in use)', ' (utilisée)') : '')); })) : h('p.muted', L('No baseline saved yet.', 'Aucune référence enregistrée pour le moment.'));
+    A.dialog({
+      title: L('Save a baseline', 'Enregistrer une référence'),
+      body: h('div.form', h('p.muted', L('A baseline freezes today’s dates and costs so that later changes can be compared with the plan. Up to ten can be kept; the one selected in the Gantt toolbar is shown as grey bars and used for earned value.', 'Une référence fige les dates et coûts d’aujourd’hui afin de comparer les changements ultérieurs avec le plan. Jusqu’à dix peuvent être conservées ; celle choisie dans la barre du Gantt est affichée en gris et utilisée pour la valeur acquise.')),
+        A.field(L('Name', 'Nom'), A.input(d, 'name', 'text')), h('h3', L('Saved baselines', 'Références enregistrées')), list),
+      buttons: [{ label: L('Cancel', 'Annuler') }, { label: L('Save', 'Enregistrer'), primary: true, onclick: function () {
+        A.edit(function () { A.setBaseline(d.name.trim() || undefined); }); A.ui.showBase = true; A.refresh(); A.toast(L('Baseline saved and in use.', 'Référence enregistrée et utilisée.'), 'ok');
+      } }]
+    });
+  };
+
+  /* ---------- resource picker: a drop-down with one line per resource, as in MS Project ---------- */
+  A.resourcePicker = function (anchor, taskId) {
+    var old = document.querySelector('.respick'); if (old) old.remove();
+    var P = A.P, cur = (A.S.assignByTask.get(taskId) || []).map(function (a) { return { res: a.res, units: a.units, on: true }; });
+    var rows = P.resources.map(function (r) { var a = cur.find(function (x) { return x.res === r.id; }); return { r: r, on: !!a, units: a ? a.units : (r.type === 'work' ? 100 : 1) }; });
+    var box = h('div.respick', { role: 'dialog' }), list = h('div.rp-list'), nameIn = h('input.in', { type: 'text', placeholder: L('New resource…', 'Nouvelle ressource…') });
+    var typeSel = h('select.in.sm', h('option', { value: 'work' }, L('Work', 'Travail')), h('option', { value: 'material' }, L('Material', 'Matériau')), h('option', { value: 'cost' }, L('Cost', 'Coût')));
+    function unitLabel(r) { return r.type === 'work' ? '%' : r.type === 'material' ? (r.unit || L('qty', 'qté')) : P.currency; }
+    function drawList() {
+      list.textContent = '';
+      if (!rows.length) list.appendChild(h('p.muted', L('No resource yet: type a name below.', 'Aucune ressource : saisir un nom ci-dessous.')));
+      rows.forEach(function (x) {
+        var cb = h('input', { type: 'checkbox', checked: x.on, onchange: function () { x.on = cb.checked; units.disabled = !x.on; } });
+        var units = h('input.in.num.sm', { type: 'text', value: A.fmtNum(x.units, x.units % 1 ? 2 : 0), disabled: !x.on, onchange: function () { x.units = A.num(units.value); x.on = true; cb.checked = true; } });
+        list.appendChild(h('label.rp-row', cb, h('span.nm', x.r.name, h('small.muted', ' · ' + (x.r.type === 'work' ? L('work', 'travail') : x.r.type === 'material' ? L('material', 'matériau') : L('cost', 'coût')))), units, h('span.unit', unitLabel(x.r))));
+      });
+    }
+    function addNew() {
+      var name = nameIn.value.trim(); if (!name) return;
+      if (rows.some(function (x) { return x.r.name.toLowerCase() === name.toLowerCase(); })) { nameIn.value = ''; return; }
+      var r = A.newResource(name, typeSel.value); r._new = true; rows.push({ r: r, on: true, units: r.type === 'work' ? 100 : 1 }); nameIn.value = ''; drawList(); list.scrollTop = list.scrollHeight;
+    }
+    function apply() {
+      A.edit(function () {
+        rows.forEach(function (x) { if (x.r._new && x.on) { delete x.r._new; A.P.resources.push(x.r); } });
+        A.P.assignments = A.P.assignments.filter(function (a) { return a.task !== taskId; });
+        rows.forEach(function (x) { if (x.on && !x.r._new) A.P.assignments.push({ task: taskId, res: x.r.id, units: x.units }); });
+      });
+      close();
+    }
+    function close() { box.remove(); document.removeEventListener('pointerdown', outside, true); }
+    function outside(e) { if (!box.contains(e.target)) { close(); A.refresh(); } }
+    nameIn.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addNew(); } e.stopPropagation(); });
+    box.addEventListener('keydown', function (e) { if (e.key === 'Escape') { close(); A.refresh(); } e.stopPropagation(); });
+    drawList();
+    box.appendChild(h('div.rp-head', L('Resources of ', 'Ressources de ') + (A.taskById(taskId) || {}).name));
+    box.appendChild(list);
+    box.appendChild(h('div.rp-new', nameIn, typeSel, A.btn('plus', L('Add', 'Ajouter'), addNew, { iconOnly: true })));
+    box.appendChild(h('div.rp-foot', h('span.muted', L('Units: % for people and equipment, quantity for materials, amount for cost items.', 'Unités : % pour personnes et équipements, quantité pour matériaux, montant pour postes de coût.')), h('span.sp'),
+      A.btn(null, L('Cancel', 'Annuler'), function () { close(); A.refresh(); }), A.btn('check', 'OK', apply, { primary: true })));
+    document.body.appendChild(box);
+    var r = anchor.getBoundingClientRect(), bw = box.offsetWidth, bh = box.offsetHeight;
+    var left = Math.max(8, Math.min(window.innerWidth - bw - 8, r.left)), top = r.bottom + 4; if (top + bh > window.innerHeight - 8) top = Math.max(8, r.top - bh - 4);
+    box.style.left = left + 'px'; box.style.top = top + 'px';
+    setTimeout(function () { document.addEventListener('pointerdown', outside, true); (list.querySelector('input') || nameIn).focus(); }, 0);
   };
 })();

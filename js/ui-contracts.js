@@ -25,7 +25,7 @@ var A = globalThis.A = globalThis.A || {};
     });
   }
   /* create contracts from tasks */
-  function fromTasksDialog() {
+  function fromTasksDialog(generate) {
     var chosen = new Set(), list = h('div.picklist'), any = false;
     A.S.nodes.forEach(function (n) {
       var t = n.t; if (t.proc || t.contract || n.isLoe) return;
@@ -37,8 +37,9 @@ var A = globalThis.A = globalThis.A || {};
     });
     if (!any) return A.toast(L('Every task already belongs to a contract.', 'Toutes les tâches appartiennent déjà à un contrat.'));
     A.dialog({
-      title: L('Create contracts from tasks', 'Créer des contrats à partir des tâches'), wide: true,
-      body: h('div', h('p.muted', L('Tick the tasks that will each be carried out under one contract. The estimate is taken from the task cost.', "Cocher les tâches qui seront réalisées chacune par un contrat. L'estimation reprend le coût de la tâche.")), list),
+      title: generate ? L('Generate procurement activities', 'Générer les activités de passation') : L('Create contracts from tasks', 'Créer des contrats à partir des tâches'), wide: true,
+      body: h('div', h('p.muted', generate ? L('Tick the tasks that will each be carried out under one contract. A contract is created for each, with the method suggested by the thresholds, and its procurement steps are added to the plan before the task.', 'Cocher les tâches qui seront réalisées chacune par un contrat. Un contrat est créé pour chacune, avec la méthode proposée par les seuils, et ses étapes de passation sont ajoutées au plan avant la tâche.')
+        : L('Tick the tasks that will each be carried out under one contract. The estimate is taken from the task cost.', "Cocher les tâches qui seront réalisées chacune par un contrat. L'estimation reprend le coût de la tâche.")), list),
       buttons: [{ label: L('Cancel', 'Annuler') }, { label: L('Create', 'Créer'), primary: true, onclick: function () {
         if (!chosen.size) return false;
         A.edit(function () {
@@ -48,8 +49,10 @@ var A = globalThis.A = globalThis.A || {};
             c.estimate = Math.round(n.cost); c.ref = 'C-' + String(A.P.contracts.length + 1).padStart(2, '0');
             c.pcat = /good|bien|fournit|equip|équip/i.test(cat) ? 'goods' : /consult|service|étude|etude|audit/i.test(cat) ? 'firm' : 'works';
             A.P.contracts.push(c); t.contract = c.id; A.ui.contractId = c.id;
+            if (generate) { if (!c.procParent && A.P.procHome) c.procParent = A.P.procHome; A.generateProcurement(c); }
           });
         });
+        if (generate) A.toast(L('Contracts created and procurement steps added to the plan.', 'Contrats créés et étapes de passation ajoutées au plan.'), 'ok');
       } }]
     });
   }
@@ -74,22 +77,43 @@ var A = globalThis.A = globalThis.A || {};
     }
     /* register */
     var infos = P.contracts.map(A.contractInfo), tot = { est: 0, rev: 0, paid: 0 };
-    var table = h('table.data.pickable');
-    table.appendChild(h('thead', h('tr', h('th', L('Ref.', 'Réf.')), h('th', L('Contract', 'Contrat')), h('th', L('Contractor', 'Titulaire')), h('th', L('Method', 'Méthode')),
+    var ids = P.contracts.map(function (c) { return c.id; }); ui.cSel.forEach(function (id) { if (ids.indexOf(id) < 0) ui.cSel.delete(id); });
+    var table = h('table.data.pickable'), allCb = h('input', { type: 'checkbox', checked: ui.cSel.size === P.contracts.length && P.contracts.length > 0, title: L('Select all', 'Tout sélectionner'),
+      onclick: function (e) { e.stopPropagation(); ui.cSel = allCb.checked ? new Set(ids) : new Set(); A.refresh(); } });
+    table.appendChild(h('thead', h('tr', h('th.ck', allCb), h('th', L('Ref.', 'Réf.')), h('th', L('Contract', 'Contrat')), h('th', L('Contractor', 'Titulaire')), h('th', L('Method', 'Méthode')),
       h('th.r', L('Amount', 'Montant') + ' (' + cur + ')'), h('th.r', L('Paid', 'Payé')), h('th', L('Start', 'Début')), h('th', L('End', 'Fin')), h('th', L('Progress', 'Avancement')), h('th', L('Status', 'Statut')), h('th', L('Alerts', 'Alertes')))));
     var tb = h('tbody');
     infos.forEach(function (o) {
       var c = o.c, bad = o.alerts.filter(function (a) { return a.level === 'bad'; }).length, warn = o.alerts.filter(function (a) { return a.level === 'warn'; }).length;
       tot.est += o.base; tot.rev += o.revised; tot.paid += o.paid;
-      tb.appendChild(h('tr' + (c.id === ui.contractId ? '.sel' : ''), { tabindex: 0, onclick: function () { ui.contractId = c.id; A.refresh(); }, onkeydown: function (e) { if (e.key === 'Enter') { ui.contractId = c.id; A.refresh(); } } },
-        h('td', c.ref), h('td.b', c.title), h('td', c.contractor || '—'), h('td', { title: A.methodName(A.effMethod(c)) }, A.methodShort(A.effMethod(c))),
+      var cb = h('input', { type: 'checkbox', checked: ui.cSel.has(c.id), onclick: function (e) { e.stopPropagation(); if (cb.checked) ui.cSel.add(c.id); else ui.cSel.delete(c.id); A.refresh(); } });
+      tb.appendChild(h('tr' + (c.id === ui.contractId ? '.sel' : '') + (ui.cSel.has(c.id) ? '.ticked' : ''), { tabindex: 0, onclick: function (e) { if (e.shiftKey || e.ctrlKey || e.metaKey) { if (ui.cSel.has(c.id)) ui.cSel.delete(c.id); else ui.cSel.add(c.id); } ui.contractId = c.id; A.refresh(); }, onkeydown: function (e) { if (e.key === 'Enter') { ui.contractId = c.id; A.refresh(); } if (e.key === ' ') { e.preventDefault(); if (ui.cSel.has(c.id)) ui.cSel.delete(c.id); else ui.cSel.add(c.id); A.refresh(); } } },
+        h('td.ck', cb), h('td', c.ref), h('td.b', c.title), h('td', c.contractor || '—'), h('td', { title: A.methodName(A.effMethod(c)) }, A.methodShort(A.effMethod(c))),
         h('td.r', A.money(o.revised)), h('td.r', o.revised ? Math.round(o.paid / o.revised * 100) + ' %' : ''), h('td', A.fmtDate(o.start)), h('td', A.fmtDate(o.revEnd)),
         h('td', h('div.meter', { title: Math.round(o.pct) + ' %' }, h('i', { style: { width: Math.round(o.pct) + '%' } }))), h('td', statusPill(c)),
         h('td', bad ? h('span.badge.bad', { title: o.alerts.map(function (a) { return a.text; }).join('\n') }, bad) : null, warn ? h('span.badge.warn', { title: o.alerts.map(function (a) { return a.text; }).join('\n') }, warn) : null)));
     });
     table.appendChild(tb);
-    table.appendChild(h('tfoot', h('tr.total', h('td', { colspan: 4 }, L('Total', 'Total')), h('td.r', A.money(tot.rev)), h('td.r', tot.rev ? Math.round(tot.paid / tot.rev * 100) + ' %' : ''), h('td', { colspan: 5 }))));
+    table.appendChild(h('tfoot', h('tr.total', h('td', { colspan: 5 }, L('Total', 'Total')), h('td.r', A.money(tot.rev)), h('td.r', tot.rev ? Math.round(tot.paid / tot.rev * 100) + ' %' : ''), h('td', { colspan: 5 }))));
     root.appendChild(h('div.card.flush', h('div.scroll-x.register', table)));
+    if (ui.cSel.size) {
+      var selC = P.contracts.filter(function (c) { return ui.cSel.has(c.id); }), selTot = 0; selC.forEach(function (c) { selTot += A.contractInfo(c).revised; });
+      var stSel = h('select.in.sm', h('option', { value: '' }, L('Change status…', 'Changer le statut…')), A.cstatuses().map(function (s) { return h('option', { value: s.id }, s.name); }));
+      stSel.addEventListener('change', function () { var v = stSel.value; if (!v) return; A.edit(function () { A.P.contracts.forEach(function (c) { if (ui.cSel.has(c.id)) c.status = v; }); }); });
+      root.appendChild(h('div.toolbar.bulk',
+        h('div.tg', h('b', selC.length + L(' contracts selected', ' contrats sélectionnés')), h('span.muted', ' · ' + A.money(selTot) + ' ' + cur)),
+        h('div.tg', A.btn('gear', L('Generate procurement steps', 'Générer les étapes de passation'), function () {
+          A.edit(function () { A.P.contracts.forEach(function (c) { if (ui.cSel.has(c.id)) { if (!c.procParent && A.P.procHome) c.procParent = A.P.procHome; A.generateProcurement(c); } }); });
+          A.toast(L('Procurement steps created for the selected contracts.', 'Étapes de passation créées pour les contrats sélectionnés.'), 'ok');
+        }), stSel,
+          A.btn('down2', 'Excel', function () { A.exportContractsXLSX(selC); }, { title: L('Export the selected contracts to Excel', 'Exporter les contrats sélectionnés vers Excel') }),
+          A.btn('trash', L('Delete', 'Supprimer'), function () {
+            A.confirm(L('Delete the ', 'Supprimer les ') + selC.length + L(' selected contracts and their procurement steps? The tasks carried out under them are kept.', ' contrats sélectionnés et leurs étapes de passation ? Les tâches réalisées sont conservées.'), L('Delete', 'Supprimer'), function () {
+              A.edit(function () { selC.forEach(function (c) { A.removeProcurement(c); A.P.tasks.forEach(function (t) { if (t.contract === c.id) t.contract = 0; }); }); A.P.contracts = A.P.contracts.filter(function (c) { return !ui.cSel.has(c.id); }); ui.cSel = new Set(); });
+            });
+          }, { danger: true })),
+        h('div.tg', A.btn('close', L('Clear selection', 'Annuler la sélection'), function () { ui.cSel = new Set(); A.refresh(); }, { ghost: true }))));
+    }
 
     /* detail */
     var c = A.contractById(ui.contractId), o = A.contractInfo(c), g = cGet(c.id), fk = 'c' + c.id + ':';
@@ -207,7 +231,7 @@ var A = globalThis.A = globalThis.A || {};
     var homeSel = A.live(function () { return A.P; }, 'procHome', 'select', { options: homeOpts, fk: 'procHome' });
     if (P.procHome == null) homeSel.selectedIndex = 0;
     root.appendChild(h('div.toolbar',
-      h('div.tg', A.btn('child', L('Contracts from tasks…', 'Contrats depuis les tâches…'), A.fromTasksDialog, { primary: true }),
+      h('div.tg', A.btn('gear', L('Generate procurement activities…', 'Générer les activités de passation…'), function () { A.fromTasksDialog(true); }, { primary: true, title: L('Choose tasks: a contract and its procurement steps are created for each', 'Choisir des tâches : un contrat et ses étapes de passation sont créés pour chacune') }),
         A.btn('gear', L('Generate all steps', 'Générer toutes les étapes'), function () {
           A.edit(function () { A.P.contracts.forEach(function (c) { if (!c.procParent && A.P.procHome) c.procParent = A.P.procHome; A.generateProcurement(c); }); });
           A.toast(L('Procurement steps created in the plan for every contract.', 'Étapes de passation créées dans le plan pour chaque contrat.'), 'ok');

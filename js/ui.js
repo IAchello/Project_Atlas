@@ -1,6 +1,6 @@
 /* Project Atlas — user-interface helpers: elements, dialogs, toasts, editable lists. */
 var A = globalThis.A = globalThis.A || {};
-A.ui = { tab: 'dashboard', sel: new Set(), anchor: null, zoom: null, showCrit: true, showBase: false, gridW: 620,
+A.ui = { tab: 'dashboard', sel: new Set(), anchor: null, zoom: null, showCrit: true, showBase: false, gridW: 620, filter: 'all', wbsZoom: 1, cSel: new Set(),
   contractId: null, contractTab: 'general', wbsDir: 'h', wbsDepth: 0, wbsCost: true, cfStep: 'quarter', cfBy: 'category', resId: null,
   report: { summary: true, wbs: true, gantt: true, budget: true, cashflow: true, procurement: true, contracts: true, dictionary: false, evm: true } };
 A.views = {};
@@ -163,7 +163,12 @@ A.listEditor = function (o) {
     o.cols.forEach(function (c) {
       var td = A.h('td' + (c.type === 'num' || c.type === 'pct' ? '.r' : ''));
       if (c.ro) td.appendChild(document.createTextNode(c.get(row)));
-      else td.appendChild(A.live(function () { return o.rows()[i]; }, c.k, c.type || 'text', { options: c.options, fk: o.id + ':' + i + ':' + c.k, zero: c.zero, set: c.set, unitKey: c.unitKey, signed: c.signed }));
+      else if (c.render) td.appendChild(c.render(row, i, o.id + ':' + i + ':' + c.k));
+      else {
+        var el = A.live(function () { return o.rows()[i]; }, c.k, c.type || 'text', { options: c.options, fk: o.id + ':' + i + ':' + c.k, zero: c.zero, set: c.set, unitKey: c.unitKey, signed: c.signed, placeholder: c.placeholder });
+        if (c.disabled && c.disabled(row)) { el.disabled = true; el.classList.add('locked'); if (c.lockTitle) el.title = c.lockTitle(row); }
+        td.appendChild(el);
+      }
       tr.appendChild(td);
     });
     tr.appendChild(A.h('td.act', A.btn('trash', L('Delete', 'Supprimer'), function () { A.edit(function () { var r = o.rows(); if (o.del) o.del(r[i]); r.splice(i, 1); }); }, { iconOnly: true, ghost: true })));

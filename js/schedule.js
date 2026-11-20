@@ -35,6 +35,7 @@ A.parseDur = function (text, defUnit) {
   days = days === 0 ? 0 : Math.max(1, Math.round(days));
   return { dur: neg ? -days : days, unit: unit };
 };
+A.fmtDurT = function (days, t) { return A.fmtDur(days, A.dUnit(t)); };
 A.fmtDur = function (days, unit) {
   unit = unit || 'd';
   var v = days / A.unitDays(unit);
@@ -277,7 +278,7 @@ A.wouldCycle = function (taskId, preds) {
 /* ---------- costs ---------- */
 A.ratePerDay = function (r) {
   var c = A.P.calendar;
-  return r.per === 'h' ? r.rate * c.hoursPerDay : r.per === 'w' ? r.rate / c.daysPerWeek : r.per === 'mo' ? r.rate / c.daysPerMonth : r.rate;
+  return r.per === 'h' ? r.rate * c.hoursPerDay : r.per === 'w' ? r.rate / c.daysPerWeek : r.per === 'mo' ? r.rate / c.daysPerMonth : r.rate; // 'd' and 'u'
 };
 A.assignCost = function (a, r, durDays) {
   if (!r) return 0;
@@ -294,10 +295,8 @@ A.computeCosts = function (p, S) {
   var saved = A.P; A.P = p;
   S.order.forEach(function (n) {
     var t = n.t, own = +t.fixed || 0;
-    if (!n.summary) {
-      own += (+t.rate || 0) * n.dur / p.calendar.daysPerMonth;
-      (byTask.get(t.id) || []).forEach(function (a) { own += A.assignCost(a, resById.get(a.res), n.dur); });
-    }
+    if (!n.summary) own += (+t.rate || 0) * n.dur / p.calendar.daysPerMonth;
+    (byTask.get(t.id) || []).forEach(function (a) { own += A.assignCost(a, resById.get(a.res), n.dur); });
     n.own = own; n.cost = own;
     if (n.summary) n.children.forEach(function (c) { n.cost += c.cost; });
   });
@@ -364,7 +363,7 @@ A.resourceLoad = function (S, resId, periods) {
   var p = A.P, cal = S.cal, asg = p.assignments.filter(function (a) { return a.res === resId; });
   var ev = [];
   asg.forEach(function (a) {
-    var n = S.info.get(a.task); if (!n || n.summary || n.EF <= n.ES) return;
+    var n = S.info.get(a.task); if (!n || n.EF <= n.ES) return;
     ev.push({ a: n.ES, b: n.EF, u: a.units == null ? 100 : a.units, n: n });
   });
   return periods.map(function (pr) {
@@ -382,11 +381,18 @@ A.resourceLoad = function (S, resId, periods) {
 A.overallocations = function (S) {
   var p = A.P, out = [];
   p.resources.forEach(function (r) {
+    if (r.type === 'material') { // capacity = quantity available for the whole project
+      if (!(r.max > 0)) return;
+      var qty = 0, first = null;
+      p.assignments.forEach(function (a) { var n = S.info.get(a.task); if (a.res !== r.id || !n) return; qty += +a.units || 0; if (first == null || n.ES < first) first = n.ES; });
+      if (qty > r.max) out.push({ res: r, peak: qty, qty: true, day: S.cal.dateOf(first || 0) });
+      return;
+    }
     if (r.type !== 'work') return;
     var ev = [];
     p.assignments.forEach(function (a) {
       if (a.res !== r.id) return;
-      var n = S.info.get(a.task); if (!n || n.summary || n.EF <= n.ES) return;
+      var n = S.info.get(a.task); if (!n || n.EF <= n.ES) return;
       ev.push({ a: n.ES, b: n.EF, u: a.units == null ? 100 : a.units });
     });
     var worst = 0, at = null;
@@ -400,10 +406,23 @@ A.overallocations = function (S) {
 };
 
 /* ---------- baseline ---------- */
-A.setBaseline = function () {
-  var b = { date: A.todayISO(), tasks: {}, total: A.S.total, finish: A.S.finish };
+A.MAX_BASELINES = 10;
+/* save the current schedule as a new baseline (up to 10) and make it the one in use; returns it, or null when the list is full */
+A.setBaseline = function (name) {
+  var p = A.P; p.baselines = p.baselines || [];
+  if (p.baselines.length >= A.MAX_BASELINES) return null;
+  var b = { id: A.uid(), name: name || (A.L('Baseline ', 'Référence ') + (p.baselines.length + 1)), date: A.todayISO(), tasks: {}, total: A.S.total, finish: A.S.finish };
   A.S.nodes.forEach(function (n) { b.tasks[n.id] = { ES: n.ES, EF: n.EF, x0: n.x0, x1: n.x1, start: n.start, finish: n.finish, cost: n.cost, own: n.own }; });
-  A.P.baseline = b;
+  p.baselines.push(b); p.baselineId = b.id; p.baseline = b;
+  return b;
+};
+A.useBaseline = function (id) { A.P.baselineId = id; A.P.baseline = A.activeBaseline(A.P); };
+/* "clear baseline": removes the baseline in use; the previous one, if any, takes over */
+A.clearBaseline = function (id) {
+  var p = A.P; id = id || p.baselineId;
+  p.baselines = (p.baselines || []).filter(function (b) { return b.id !== id; });
+  if (p.baselineId === id) p.baselineId = p.baselines.length ? p.baselines[p.baselines.length - 1].id : 0;
+  p.baseline = A.activeBaseline(p);
 };
 
 /* ---------- task list operations (called inside A.edit) ---------- */
@@ -450,6 +469,17 @@ A.ops.indent = function (ids, delta) {
       if (k >= 0) ts[k].collapsed = false;
     }
   });
+};
+/* move a task (with its sub-tasks) next to or under another one: where = 'child' | 'before' | 'after' */
+A.ops.reparent = function (id, targetId, where) {
+  var ts = A.P.tasks, i = A.taskIndex(id), j = A.taskIndex(targetId); if (i < 0 || j < 0 || id === targetId) return false;
+  var e = A.blockEnd(i); if (j >= i && j < e) return false; // cannot drop inside its own sub-tree
+  var block = ts.splice(i, e - i), tj = A.taskIndex(targetId), target = ts[tj], lv0 = block[0].level, newLevel, at;
+  if (where === 'child') { newLevel = target.level + 1; at = A.blockEnd(tj); target.collapsed = false; target.wbsFold = false; }
+  else { newLevel = target.level; at = where === 'before' ? tj : A.blockEnd(tj); }
+  block.forEach(function (t) { t.level += newLevel - lv0; });
+  ts.splice.apply(ts, [at, 0].concat(block));
+  return true;
 };
 A.ops.move = function (id, dir) {
   var ts = A.P.tasks, i = A.taskIndex(id); if (i < 0) return;

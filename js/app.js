@@ -81,7 +81,7 @@ var A = globalThis.A = globalThis.A || {};
     var head = document.getElementById('head'); head.textContent = '';
     head.appendChild(h('div.brandbox',
       h('span.logo', h('img', { src: 'assets/logo.png', alt: 'SETYM' })),
-      h('div.bt', h('strong', 'Project Atlas'), h('span.proj', { title: L('Project settings', 'Paramètres du projet'), onclick: function () { A.go('project'); } }, A.P.name))));
+      h('div.bt', h('strong', 'Project Atlas', h('small.ver', ' v' + A.APP_VERSION)), h('span.proj', { title: L('Project settings', 'Paramètres du projet'), onclick: function () { A.go('project'); } }, A.P.name))));
     head.appendChild(h('div.headtools',
       menu(L('File', 'Fichier'), 'file', [
         [L('New project', 'Nouveau projet'), A.fileNew], [L('Open…', 'Ouvrir…'), A.fileOpen, L('.atlas file, MS Project XML or EVM Tracker .json', 'fichier .atlas, XML MS Project ou .json EVM Tracker')], [L('Save to a file', 'Enregistrer dans un fichier'), A.fileSave, '.atlas'], null,
@@ -91,9 +91,10 @@ var A = globalThis.A = globalThis.A || {};
         [L('Export MS Project XML', 'Exporter en XML MS Project'), A.exportXML], [L('Export to Excel', 'Exporter vers Excel'), A.exportXLSX, L('tasks, resources, contracts, budget, cash flow', 'tâches, ressources, contrats, budget, trésorerie')],
         [L('Print / PDF reports', 'Rapports à imprimer / PDF'), function () { A.go('reports'); }], null,
         [L('Load the example: Azuriya Health Project', 'Charger l’exemple : Projet Santé Azuriya'), A.loadExample, L('planning, procurement, contracts', 'planification, passation, contrats')],
-        [L('Load the example: Project ABCDE', 'Charger l’exemple : Projet ABCDE'), A.loadABCDE, L('earned value monitoring', 'suivi par la valeur acquise')]]),
+        [L('Load the example: Project ABCDE', 'Charger l’exemple : Projet ABCDE'), A.loadABCDE, L('earned value monitoring', 'suivi par la valeur acquise')], null,
+        [L('Open Project Atlas version 1', 'Ouvrir Project Atlas version 1'), function () { window.open('v1/', '_blank'); }, L('the previous version, kept unchanged', 'la version précédente, conservée telle quelle')]]),
       (function () { var m = menu(A.cloud.statusText(), 'link', A.cloud.menuItems()); m.classList.add('share'); if (A.P.shared && A.P.shared.dirty && A.cloud.canEdit()) m.classList.add('dirty'); return m; })(),
-      A.P.shared && A.cloud.canEdit() ? A.btn('up2', L('Save online', 'Enregistrer en ligne'), function () { A.cloud.save(); }, { primary: A.P.shared.dirty, title: L('Send your changes to the shared online project (Ctrl+S)', 'Envoyer vos modifications au projet partagé en ligne (Ctrl+S)') }) : null,
+      A.cloud.presence(),
       A.btn('save', L('Save', 'Enregistrer'), A.fileSave, { title: L('Save the project to a file. Changes are also kept automatically in this browser.', 'Enregistrer le projet dans un fichier. Les modifications sont aussi conservées automatiquement dans ce navigateur.') }),
       A.btn('undo', L('Undo (Ctrl+Z)', 'Annuler (Ctrl+Z)'), A.undo, { iconOnly: true, disabled: !A.undoStack.length }),
       A.btn('redo', L('Redo (Ctrl+Y)', 'Rétablir (Ctrl+Y)'), A.redo, { iconOnly: true, disabled: !A.redoStack.length }),
@@ -127,14 +128,14 @@ var A = globalThis.A = globalThis.A || {};
       if (k === 'z' && !e.shiftKey) { A.undo(); e.preventDefault(); }
       else if (k === 'y' || (k === 'z' && e.shiftKey)) { A.redo(); e.preventDefault(); }
     }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { if (A.P.shared && A.cloud.canEdit()) A.cloud.save(); else A.fileSave(); e.preventDefault(); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { if (A.P.shared && A.cloud.canEdit()) { A.cloud.save(); A.toast(L('Changes sent.', 'Modifications envoyées.'), 'ok'); } else A.fileSave(); e.preventDefault(); }
   });
 
   A.start = function () {
     var pf = prefs() || {};
     A.lang = pf.lang || ((navigator.language || 'en').slice(0, 2) === 'fr' ? 'fr' : 'en');
     var p = null;
-    try { p = JSON.parse(localStorage.getItem(A.storageKey) || 'null'); } catch (e) { p = null; }
+    try { p = JSON.parse(localStorage.getItem(A.storageKey) || 'null'); if (!p) p = JSON.parse(localStorage.getItem(A.storageKeyV1) || 'null'); /* first start of version 2: continue with the version 1 project */ } catch (e) { p = null; }
     if (p && Array.isArray(p.tasks)) { A.P = A.normalize(p); if (pf.tab && A.views[pf.tab]) A.ui.tab = pf.tab; }
     else A.P = A.newProject();
     A.recalc();

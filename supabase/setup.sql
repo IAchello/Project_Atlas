@@ -94,3 +94,33 @@ grant execute on function public.atlas_head(uuid) to anon, authenticated;
 grant execute on function public.atlas_check(uuid, text) to anon, authenticated;
 grant execute on function public.atlas_save(uuid, text, jsonb, text, integer, text, boolean) to anon, authenticated;
 grant execute on function public.atlas_delete(uuid, text) to anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Version 2: who is working on a project right now (shown as initials in the header)
+create table if not exists public.atlas_presence (
+  project_id  uuid not null references public.atlas_projects(id) on delete cascade,
+  client      text not null,
+  name        text not null default '',
+  seen_at     timestamptz not null default now(),
+  primary key (project_id, client)
+);
+alter table public.atlas_presence enable row level security;
+revoke all on public.atlas_presence from anon, authenticated;
+
+-- "I am here": records the caller, forgets people silent for 2 minutes, and returns the project
+-- version together with the other people seen in the last 30 seconds
+create or replace function public.atlas_ping(p_id uuid, p_client text, p_by text)
+returns json language plpgsql security definer set search_path = public as $$
+declare r public.atlas_projects; o json;
+begin
+  select * into r from public.atlas_projects where id = p_id;
+  if not found then return null; end if;
+  insert into public.atlas_presence (project_id, client, name, seen_at) values (p_id, left(coalesce(p_client, ''), 40), left(coalesce(p_by, ''), 80), now())
+    on conflict (project_id, client) do update set name = excluded.name, seen_at = now();
+  delete from public.atlas_presence where project_id = p_id and seen_at < now() - interval '2 minutes';
+  select coalesce(json_agg(json_build_object('client', client, 'name', name) order by name), '[]'::json) into o
+    from public.atlas_presence where project_id = p_id and client <> p_client and seen_at > now() - interval '30 seconds';
+  return json_build_object('version', r.version, 'updated_at', r.updated_at, 'updated_by', r.updated_by, 'name', r.name, 'others', o);
+end $$;
+revoke all on function public.atlas_ping(uuid, text, text) from public;
+grant execute on function public.atlas_ping(uuid, text, text) to anon, authenticated;
